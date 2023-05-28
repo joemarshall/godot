@@ -217,8 +217,6 @@ public:
 	FUNC4RC(RID, texture_wrap_rd_texture, RID, RD::TextureFormat,RD::TextureView,&Image::Format)
 	FUNC2RC(uint64_t, texture_get_native_handle, RID, bool)
 
-
-
 	/* SHADER API */
 
 #undef ServerName
