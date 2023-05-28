@@ -177,6 +177,21 @@ Ref<ImageTexture> ImageTexture::create_from_image(const Ref<Image> &p_image) {
 	return image_texture;
 }
 
+Ref<ImageTexture> ImageTexture::create_from_renderdevice_texture(RID p_rd_texture,const RDTextureFormat &rd_format,const RDTextureView &rd_texture_view)
+{
+	ERR_FAIL_COND_V_MSG(p_rd_texture.is_null(),RID,"Texture is null");
+	Ref<ImageTexture> image_texture;
+	image_texture.instantiate();
+	RID new_texture = RenderingServer::get_singleton()->texture_wrap_rd_texture(p_rd_texture,rd_format,rd_texture_view,image_texture->format);
+	image_texture->texture=new_texture;
+	image_texture->w=rd_format.width;
+	image_texture->h=rd_format.height;
+	image_texture->mipmaps=rd_format.mipmaps;
+	image_texture->image_stored=true;
+	return image_texture;
+}
+
+
 void ImageTexture::set_image(const Ref<Image> &p_image) {
 	ERR_FAIL_COND_MSG(p_image.is_null() || p_image->is_empty(), "Invalid image");
 	w = p_image->get_width();
@@ -322,6 +337,7 @@ void ImageTexture::set_path(const String &p_path, bool p_take_over) {
 
 void ImageTexture::_bind_methods() {
 	ClassDB::bind_static_method("ImageTexture", D_METHOD("create_from_image", "image"), &ImageTexture::create_from_image);
+	ClassDB::bind_static_method("ImageTexture", D_METHOD("create_from_renderdevice_texture", "rd_texture","rdtextureformat","rdtextureview"), &ImageTexture::create_from_renderdevice_texture);
 	ClassDB::bind_method(D_METHOD("get_format"), &ImageTexture::get_format);
 
 	ClassDB::bind_method(D_METHOD("set_image", "image"), &ImageTexture::set_image);

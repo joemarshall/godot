@@ -114,6 +114,7 @@ protected:
 public:
 	void set_image(const Ref<Image> &p_image);
 	static Ref<ImageTexture> create_from_image(const Ref<Image> &p_image);
+	static Ref<ImageTexture> create_from_renderdevice_texture(RID p_rd_texture,const RDTextureFormat &rd_format,const RDTextureView &rd_texture_view);
 
 	Image::Format get_format() const;
 

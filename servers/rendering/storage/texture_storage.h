@@ -79,6 +79,7 @@ public:
 	virtual void texture_2d_placeholder_initialize(RID p_texture) = 0;
 	virtual void texture_2d_layered_placeholder_initialize(RID p_texture, RenderingServer::TextureLayeredType p_layered_type) = 0;
 	virtual void texture_3d_placeholder_initialize(RID p_texture) = 0;
+	virtual RID texture_wrap_rd_texture(RID p_rd_texture,const RDTextureFormat &rd_format,const RDTextureView &rd_texture_view,Image::Format &img_format)=0;
 
 	virtual Ref<Image> texture_2d_get(RID p_texture) const = 0;
 	virtual Ref<Image> texture_2d_layer_get(RID p_texture, int p_layer) const = 0;

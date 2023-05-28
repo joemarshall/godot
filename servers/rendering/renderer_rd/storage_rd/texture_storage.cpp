@@ -1442,6 +1442,58 @@ RID TextureStorage::texture_get_rd_texture(RID p_texture, bool p_srgb) const {
 	return (p_srgb && tex->rd_texture_srgb.is_valid()) ? tex->rd_texture_srgb : tex->rd_texture;
 }
 
+RID TextureStorage::texture_wrap_rd_texture(RID p_rd_texture,const RDTextureFormat &rd_format,const RDTextureView &rd_texture_view,Image::Format &img_format) const {
+
+	RID ret = texture_allocate();
+
+	ERR_FAIL_COND(rd_texture.is_null());
+	ERR_FAIL_COND(rd_format.is_null());
+	ERR_FAIL_COND(rd_texture_view.is_null());
+
+	TextureToRDFormat ret_format;
+	ret_format.format=rd_format.format;
+	ret_format.swizzle_r=rd_texture_view.swizzle_r;
+	ret_format.swizzle_g=rd_texture_view.swizzle_g;
+	ret_format.swizzle_b=rd_texture_view.swizzle_b;
+	ret_format.swizzle_a=rd_texture_view.swizzle_a;
+
+	img_format=_image_format_from_rd_format(rd_format,rd_texture_view);
+
+	Texture texture;
+	if(rd_format.depth==1){
+		texture.type = TextureStorage::TYPE_2D;
+		texture.rd_type = RD::TEXTURE_TYPE_2D;
+	}
+	else{
+		texture.type = TextureStorage::TYPE_3D;
+		texture.rd_type = RD::TEXTURE_TYPE_3D;
+	}
+
+	texture.width = rd_format.width;
+	texture.height = rd_format.width;
+	texture.layers = rd_format.array_layers;
+	texture.mipmaps = rd_format.mipmaps;
+	texture.depth = rd_format.depth;
+	texture.format = img_format;
+	texture.validated_format = img_format;
+	texture.rd_format = ret_format.format;
+
+//TODO add parameter for SRGB texture
+	texture.rd_format_srgb=RD::DATA_FORMAT_MAX;
+	texture.rd_texture =p_rd_texture;
+	texture.rd_texture_srgb=null;
+
+	//used for 2D, overridable
+	texture.width_2d = texture.width;
+	texture.height_2d = texture.height;
+	texture.is_render_target = false;
+	texture.rd_view = rd_texture_view;
+	texture.is_proxy = false;
+
+	texture_owner.initialize_rid(ret, texture);
+	return ret;
+}
+
 uint64_t TextureStorage::texture_get_native_handle(RID p_texture, bool p_srgb) const {
 	Texture *tex = texture_owner.get_or_null(p_texture);
 	ERR_FAIL_COND_V(!tex, 0);
@@ -1920,6 +1972,75 @@ Ref<Image> TextureStorage::_validate_texture_format(const Ref<Image> &p_image, T
 
 	return image;
 }
+
+Image::ImageFormat TextureStorage::_image_format_from_rd_format(const RDTextureFormat &r_format, const RDTextureView &r_view) {
+	Image::ImageFormat ret_format=Image::FORMAT_MAX;
+	switch (r_format.format) {
+		case RD::DATA_FORMAT_R8_UNORM:
+			if(r_format.swizzle_g==RD::TEXTURE_SWIZZLE_R 
+			&& r_format.swizzle_b==RD::TEXTURE_SWIZZLE_R)
+			{
+				ret_format=Image::FORMAT_L8;
+			}else
+			{
+				ret_format=Image::FORMAT_R8;
+
+			}
+			break;
+		case RD::DATA_FORMAT_R8G8_UNORM:
+			if(r_format.swizzle_g==RD::TEXTURE_SWIZZLE_R 
+			&& r_format.swizzle_b==RD::TEXTURE_SWIZZLE_R)
+			{
+				ret_format=Image::FORMAT_LA8;
+			}else
+			{
+				ret_format=Image::FORMAT_RG8;
+			}
+			break;
+		case RD::DATA_FORMAT_R8G8B8_UNORM:
+			ret_format=Image::FORMAT_RGB8
+			break;
+		case RD::DATA_FORMAT_R8G8B8A8_UNORM:
+			ret_format=Image::FORMAT_RGBA8;
+			break;
+		case RD::DATA_FORMAT_B4G4R4A4_UNORM_PACK16:
+			ret_format=Image::FORMAT_RGBA4444;
+			break;
+		case RD::DATA_FORMAT_B5G6R5_UNORM_PACK16:
+			ret_format=Image::FORMAT_RGB565;
+			break;
+		case RD::DATA_FORMAT_R32_SFLOAT:
+			ret_format=Image::FORMAT_RF;
+			break;
+		case RD::DATA_FORMAT_R32G32_SFLOAT:
+			ret_format=Image::FORMAT_RGF;
+			break;
+		case RD::DATA_FORMAT_R32G32B32_SFLOAT:
+			ret_format=Image::FORMAT_RGBF;
+			break;
+		case RD::DATA_FORMAT_R32G32B32A32_SFLOAT:
+			ret_format=Image::FORMAT_RGBAF;
+			break;
+		case RD::DATA_FORMAT_R16_SFLOAT:
+			ret_format=Image::FORMAT_RH;
+			break;
+		case RD::DATA_FORMAT_R16G16_SFLOAT:
+			ret_format=Image::FORMAT_RGH;
+			break;
+		case RD::DATA_FORMAT_R16G16B16_SFLOAT:
+			ret_format=Image::FORMAT_RGBH;
+			break;
+		case RD::DATA_FORMAT_R16G16B16A16_SFLOAT:
+			ret_format=Image::FORMAT_RGBAH;
+			break;
+
+		default:{		
+		}break;
+	}
+	ERR_FAIL_COND(ret_format==Image::FORMAT_MAX);
+	return ret_format;
+}
+
 
 /* DECAL API */
 
