@@ -102,7 +102,7 @@ public:
 	virtual void texture_2d_placeholder_initialize(RID p_texture) override{};
 	virtual void texture_2d_layered_placeholder_initialize(RID p_texture, RenderingServer::TextureLayeredType p_layered_type) override{};
 	virtual void texture_3d_placeholder_initialize(RID p_texture) override{};
-	virtual RID texture_wrap_rd_texture(RID p_rd_texture,const RDTextureFormat &rd_format,const RDTextureView &rd_texture_view,Image::Format &img_format){return RID();}
+	virtual RID texture_wrap_rd_texture(RID p_rd_texture, const RDTextureFormat &rd_format, const RDTextureView &rd_texture_view, Image::Format &img_format) { return RID(); }
 	virtual Ref<Image> texture_2d_get(RID p_texture) const override {
 		DummyTexture *t = texture_owner.get_or_null(p_texture);
 		ERR_FAIL_COND_V(!t, Ref<Image>());
