@@ -1442,24 +1442,24 @@ RID TextureStorage::texture_get_rd_texture(RID p_texture, bool p_srgb) const {
 	return (p_srgb && tex->rd_texture_srgb.is_valid()) ? tex->rd_texture_srgb : tex->rd_texture;
 }
 
-RID TextureStorage::texture_wrap_rd_texture(RID p_rd_texture, const RDTextureFormat &rd_format, const RDTextureView &rd_texture_view, Image::Format &img_format) const {
+RID TextureStorage::texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view, Image::Format img_format) const {
 	RID ret = texture_allocate();
 
-	ERR_FAIL_COND(rd_texture.is_null());
-	ERR_FAIL_COND(rd_format.is_null());
+	ERR_FAIL_COND(p_rd_texture.is_null());
+	ERR_FAIL_COND(rd_format->is_null());
 	ERR_FAIL_COND(rd_texture_view.is_null());
 
 	TextureToRDFormat ret_format;
-	ret_format.format = rd_format.format;
-	ret_format.swizzle_r = rd_texture_view.swizzle_r;
-	ret_format.swizzle_g = rd_texture_view.swizzle_g;
-	ret_format.swizzle_b = rd_texture_view.swizzle_b;
-	ret_format.swizzle_a = rd_texture_view.swizzle_a;
+	ret_format.format = rd_format->format;
+	ret_format.swizzle_r = rd_texture_view->swizzle_r;
+	ret_format.swizzle_g = rd_texture_view->swizzle_g;
+	ret_format.swizzle_b = rd_texture_view->swizzle_b;
+	ret_format.swizzle_a = rd_texture_view->swizzle_a;
 
 	img_format = _image_format_from_rd_format(rd_format, rd_texture_view);
 
 	Texture texture;
-	if (rd_format.depth == 1) {
+	if (rd_format->depth == 1) {
 		texture.type = TextureStorage::TYPE_2D;
 		texture.rd_type = RD::TEXTURE_TYPE_2D;
 	} else {
@@ -1467,11 +1467,11 @@ RID TextureStorage::texture_wrap_rd_texture(RID p_rd_texture, const RDTextureFor
 		texture.rd_type = RD::TEXTURE_TYPE_3D;
 	}
 
-	texture.width = rd_format.width;
-	texture.height = rd_format.width;
-	texture.layers = rd_format.array_layers;
-	texture.mipmaps = rd_format.mipmaps;
-	texture.depth = rd_format.depth;
+	texture.width = rd_format->width;
+	texture.height = rd_format->width;
+	texture.layers = rd_format->array_layers;
+	texture.mipmaps = rd_format->mipmaps;
+	texture.depth = rd_format->depth;
 	texture.format = img_format;
 	texture.validated_format = img_format;
 	texture.rd_format = ret_format.format;

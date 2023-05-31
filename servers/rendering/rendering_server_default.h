@@ -214,7 +214,7 @@ public:
 
 	FUNC2(texture_set_force_redraw_if_visible, RID, bool)
 	FUNC2RC(RID, texture_get_rd_texture, RID, bool)
-	FUNC4RC(RID, texture_wrap_rd_texture, RID, RD::TextureFormat, RD::TextureView, &Image::Format)
+	FUNC4RC(RID, texture_wrap_rd_texture, RID, const Ref<RDTextureFormat> &, const Ref<RDTextureView> &, Image::Format)
 	FUNC2RC(uint64_t, texture_get_native_handle, RID, bool)
 
 	/* SHADER API */
