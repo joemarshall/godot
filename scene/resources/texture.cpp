@@ -177,7 +177,7 @@ Ref<ImageTexture> ImageTexture::create_from_image(const Ref<Image> &p_image) {
 	return image_texture;
 }
 
-Ref<ImageTexture> ImageTexture::create_from_renderdevice_texture(RID p_rd_texture, int w, int h, bool mipmaps, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view) {
+Ref<ImageTexture> ImageTexture::create_from_renderdevice_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view) {
 	ERR_FAIL_COND_V_MSG(p_rd_texture.is_null(), RID, "Texture is null");
 	Ref<ImageTexture> image_texture;
 	image_texture.instantiate();
