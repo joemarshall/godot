@@ -161,6 +161,8 @@ public:
 	virtual RID texture_get_rd_texture(RID p_texture, bool p_srgb = false) const = 0;
 	virtual uint64_t texture_get_native_handle(RID p_texture, bool p_srgb = false) const = 0;
 
+  	virtual RID texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view, Image::Format img_format)=0;
+
 	/* SHADER API */
 
 	enum ShaderMode {
