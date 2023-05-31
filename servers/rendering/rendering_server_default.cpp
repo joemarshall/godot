@@ -297,6 +297,22 @@ Color RenderingServerDefault::get_default_clear_color() {
 	return RSG::texture_storage->get_default_clear_color();
 }
 
+// This can't be declared inline as a FUNC4RC because RDTextureFromat and RDTextureView are forward defined and
+// including them in the header causes unwanted header dependencies
+RID RenderingServerDefault::texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view, Image::Format img_format){
+	if (Thread::get_caller_id() != server_thread) {
+		m_r ret;
+		command_queue.push_and_ret(RSG::texture_storage, &ServerName::m_type, p1, p2, p3, p4, &ret);
+		SYNC_DEBUG
+		return ret;
+	} else {
+		command_queue.flush_if_pending();
+		return RSG::texture_storage->m_type(p1, p2, p3, p4);
+	}
+}
+
+
+
 void RenderingServerDefault::set_default_clear_color(const Color &p_color) {
 	RSG::viewport->set_default_clear_color(p_color);
 }
@@ -438,3 +454,4 @@ RenderingServerDefault::~RenderingServerDefault() {
 	memdelete(RSG::scene);
 	memdelete(RSG::camera_attributes);
 }
++
