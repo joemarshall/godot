@@ -194,7 +194,7 @@ private:
 	};
 
 	Ref<Image> _validate_texture_format(const Ref<Image> &p_image, TextureToRDFormat &r_format);
-	Image::ImageFormat _image_format_from_rd_format(const RDTextureFormat &r_format, const RDTextureView &r_view);
+	Image::Format _image_format_from_rd_format(const RDTextureFormat &r_format, const RDTextureView &r_view);
 
 	void _texture_2d_update(RID p_texture, const Ref<Image> &p_image, int p_layer = 0, bool p_immediate = false);
 
