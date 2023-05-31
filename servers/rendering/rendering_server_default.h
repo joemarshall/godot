@@ -219,7 +219,7 @@ public:
 	// This can't be a FUNC4RC because RDTextureFormat and RDTextureView are forward defined and
 	// including them here would cause added header dependencies.
 	virtual RID texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view) override;
-	virtual Image::Format texture_get_image_format_from_rd_format(Ref<RDTextureFormat> &r_format, const Ref<RDTextureView> &r_view) const override;
+	virtual Image::Format texture_get_image_format_from_rd_format(const Ref<RDTextureFormat> &r_format, const Ref<RDTextureView> &r_view) const override;
 	/* SHADER API */
 
 #undef ServerName
