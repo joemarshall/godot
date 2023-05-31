@@ -312,7 +312,7 @@ RID RenderingServerDefault::texture_wrap_rd_texture(RID p_rd_texture, const Ref<
 	}
 }
 
-Image::Format RenderingServerDefault::texture_get_image_format_from_rd_format(Ref<RDTextureFormat> &r_format, const Ref<RDTextureView> &r_view)
+Image::Format RenderingServerDefault::texture_get_image_format_from_rd_format(Ref<RDTextureFormat> &r_format, const Ref<RDTextureView> &r_view) const
 {
 	return RSG::texture_storage->texture_get_image_format_from_rd_format(r_format, r_view);
 }
