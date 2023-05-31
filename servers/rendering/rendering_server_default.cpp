@@ -37,6 +37,7 @@
 #include "renderer_canvas_cull.h"
 #include "renderer_scene_cull.h"
 #include "rendering_server_globals.h"
+#include "rendering_device_binds.h"
 
 // careful, these may run in different threads than the rendering server
 
