@@ -304,7 +304,6 @@ RID RenderingServerDefault::texture_wrap_rd_texture(RID p_rd_texture, const Ref<
 	if (Thread::get_caller_id() != server_thread) {
 		RID ret;
 		command_queue.push_and_ret(RSG::texture_storage, &RendererTextureStorage::texture_wrap_rd_texture, p_rd_texture, rd_format, rd_texture_view, &ret);
-		SYNC_DEBUG
 		return ret;
 	} else {
 		command_queue.flush_if_pending();
@@ -457,4 +456,3 @@ RenderingServerDefault::~RenderingServerDefault() {
 	memdelete(RSG::scene);
 	memdelete(RSG::camera_attributes);
 }
-+
