@@ -184,8 +184,8 @@ Ref<ImageTexture> ImageTexture::create_from_renderdevice_texture(RID p_rd_textur
 	image_texture.instantiate();
 	RID new_texture = RenderingServer::get_singleton()->texture_wrap_rd_texture(p_rd_texture, rd_format, rd_texture_view, image_texture->format);
 	image_texture->texture = new_texture;
-	image_texture->format = RenderingServer::get_singleton()->texture_get_image_format_from_rd_format(rd_format,rd_texture_view)
-	image_texture->w = rd_format->get_width();
+	image_texture->format = RenderingServer::get_singleton()->texture_get_image_format_from_rd_format(rd_format, rd_texture_view)
+									image_texture->w = rd_format->get_width();
 	image_texture->h = rd_format->get_height();
 	image_texture->mipmaps = rd_format->get_mipmaps() > 1 ? true : false;
 	image_texture->image_stored = true;
