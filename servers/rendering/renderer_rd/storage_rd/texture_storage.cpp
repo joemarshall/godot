@@ -1443,7 +1443,7 @@ RID TextureStorage::texture_get_rd_texture(RID p_texture, bool p_srgb) const {
 	return (p_srgb && tex->rd_texture_srgb.is_valid()) ? tex->rd_texture_srgb : tex->rd_texture;
 }
 
-RID TextureStorage::texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view, Image::Format img_format) const {
+RID TextureStorage::texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view) const {
 	RID ret = texture_allocate();
 
 	ERR_FAIL_COND(p_rd_texture.is_null());
@@ -1457,7 +1457,7 @@ RID TextureStorage::texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextur
 	ret_format.swizzle_b = rd_texture_view->get_swizzle_b();
 	ret_format.swizzle_a = rd_texture_view->get_swizzle_a();
 
-	img_format = _image_format_from_rd_format(rd_format, rd_texture_view);
+	img_format = texture_get_image_format_from_rd_format(rd_format, rd_texture_view);
 
 	Texture texture;
 	if (rd_format->depth == 1) {
@@ -1972,7 +1972,7 @@ Ref<Image> TextureStorage::_validate_texture_format(const Ref<Image> &p_image, T
 	return image;
 }
 
-Image::Format TextureStorage::_image_format_from_rd_format(const RDTextureFormat &r_format, const RDTextureView &r_view) {
+Image::Format TextureStorage::texture_get_image_format_from_rd_format(const RDTextureFormat &r_format, const RDTextureView &r_view) {
 	Image::Format ret_format = Image::FORMAT_MAX;
 	switch (r_format.get_format()) {
 		case RD::DATA_FORMAT_R8_UNORM:

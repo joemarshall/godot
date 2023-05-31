@@ -1700,6 +1700,8 @@ void RenderingServer::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("texture_set_force_redraw_if_visible", "texture", "enable"), &RenderingServer::texture_set_force_redraw_if_visible);
 	ClassDB::bind_method(D_METHOD("texture_get_rd_texture", "texture", "srgb"), &RenderingServer::texture_get_rd_texture, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("texture_get_native_handle", "texture", "srgb"), &RenderingServer::texture_get_native_handle, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("texture_wrap_rd_texture", "rd_texture", "rd_format","rd_texture_view"), &RenderingServer::texture_wrap_rd_texture, DEFVAL(false));
+	ClassDB::bind_method(D_METHOD("texture_get_image_format_from_rd_format", "rd_format","rd_texture_view"), &RenderingServer::texture_get_image_format_from_rd_format, DEFVAL(false));
 
 	BIND_ENUM_CONSTANT(TEXTURE_LAYERED_2D_ARRAY);
 	BIND_ENUM_CONSTANT(TEXTURE_LAYERED_CUBEMAP);
