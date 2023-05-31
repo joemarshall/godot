@@ -33,6 +33,7 @@
 #include "core/config/project_settings.h"
 #include "core/object/worker_thread_pool.h"
 #include "core/variant/typed_array.h"
+#include "servers/rendering/rendering_device_binds.h"
 #include "servers/rendering/rendering_server_globals.h"
 #include "servers/rendering/shader_language.h"
 #include "servers/rendering/shader_warnings.h"
