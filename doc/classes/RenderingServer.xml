@@ -3281,6 +3281,13 @@
 				[b]Note:[/b] The [param texture] must have the same width, height, depth and format as the current texture data. Otherwise, an error will be printed and the original texture won't be modified. If you need to use different width, height, depth or format, use [method texture_replace] instead.
 			</description>
 		</method>
+		<method name="texture_get_image_format_from_rd_format" qualifiers="const">
+			<return type="int" enum="Image.Format" />
+			<param index="0" name="rd_format" type="RDTextureFormat" />
+			<param index="1" name="rd_texture_view" type="RDTextureView" default="false" />
+			<description>
+			</description>
+		</method>
 		<method name="texture_get_native_handle" qualifiers="const">
 			<return type="int" />
 			<param index="0" name="texture" type="RID" />
@@ -3347,6 +3354,15 @@
 			<param index="1" name="width" type="int" />
 			<param index="2" name="height" type="int" />
 			<description>
+			</description>
+		</method>
+		<method name="texture_wrap_rd_texture">
+			<return type="RID" />
+			<param index="0" name="rd_texture" type="RID" />
+			<param index="1" name="rd_format" type="RDTextureFormat" />
+			<param index="2" name="rd_texture_view" type="RDTextureView" default="false" />
+			<description>
+			Wrap a render device texture in a Godot texture. This allows you to use it in other things. Mainly used via [ImageTexture::create_from_renderdevice_texture]
 			</description>
 		</method>
 		<method name="viewport_attach_camera">

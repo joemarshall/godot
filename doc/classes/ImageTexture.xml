@@ -39,8 +39,8 @@
 		<method name="create_from_renderdevice_texture" qualifiers="static">
 			<return type="ImageTexture" />
 			<param index="0" name="rd_texture" type="RID" />
-			<param index="1" name="rd_format" type="RDTextureFormat" />
-			<param index="2" name="rd_texture_view" type="RDTextureView" />
+			<param index="1" name="rdtextureformat" type="RDTextureFormat" />
+			<param index="2" name="rdtextureview" type="RDTextureView" />
 			<description>
 				Creates a new [ImageTexture] and initializes it from a low level [RenderingDevice] texture, [RDTextureFormat] and [RDTextureView]. This method enables low level rendering textures to be made available to other Godot classes.
 			</description>
