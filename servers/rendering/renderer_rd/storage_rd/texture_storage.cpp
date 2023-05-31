@@ -34,6 +34,7 @@
 #include "../framebuffer_cache_rd.h"
 #include "material_storage.h"
 #include "servers/rendering/renderer_rd/renderer_scene_render_rd.h"
+#include "servers/rendering/rendering_device_binds.h"
 
 using namespace RendererRD;
 
