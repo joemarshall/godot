@@ -38,6 +38,7 @@
 #include "scene/resources/bit_map.h"
 #include "scene/resources/mesh.h"
 #include "servers/camera/camera_feed.h"
+#include "servers/rendering/rendering_device_binds.h"
 
 int Texture2D::get_width() const {
 	int ret = 0;

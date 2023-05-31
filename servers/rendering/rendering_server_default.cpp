@@ -297,7 +297,7 @@ Color RenderingServerDefault::get_default_clear_color() {
 	return RSG::texture_storage->get_default_clear_color();
 }
 
-// This can't be declared inline as a FUNC4RC because RDTextureFromat and RDTextureView are forward defined and
+// This can't be declared inline as a FUNC4RC because RDTextureFormat and RDTextureView are forward defined and
 // including them in the header causes unwanted header dependencies
 RID RenderingServerDefault::texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view, Image::Format img_format) {
 	if (Thread::get_caller_id() != server_thread) {

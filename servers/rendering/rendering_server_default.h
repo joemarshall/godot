@@ -216,7 +216,7 @@ public:
 	FUNC2RC(RID, texture_get_rd_texture, RID, bool)
 	FUNC2RC(uint64_t, texture_get_native_handle, RID, bool)
 
-	// This can't be a FUNC4RC because RDTextureFromat and RDTextureView are forward defined and
+	// This can't be a FUNC4RC because RDTextureFormat and RDTextureView are forward defined and
 	// including them here would cause added header dependencies.
 	virtual RID texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view, Image::Format img_format) override;
 
