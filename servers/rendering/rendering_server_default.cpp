@@ -36,8 +36,8 @@
 #include "core/templates/sort_array.h"
 #include "renderer_canvas_cull.h"
 #include "renderer_scene_cull.h"
-#include "rendering_server_globals.h"
 #include "rendering_device_binds.h"
+#include "rendering_server_globals.h"
 
 // careful, these may run in different threads than the rendering server
 
@@ -303,20 +303,18 @@ Color RenderingServerDefault::get_default_clear_color() {
 RID RenderingServerDefault::texture_wrap_rd_texture(RID p_rd_texture, const Ref<RDTextureFormat> &rd_format, const Ref<RDTextureView> &rd_texture_view) {
 	if (Thread::get_caller_id() != server_thread) {
 		RID ret;
-		command_queue.push_and_ret(RSG::texture_storage, &RendererTextureStorage::texture_wrap_rd_texture, p_rd_texture,rd_format,rd_texture_view, &ret);
+		command_queue.push_and_ret(RSG::texture_storage, &RendererTextureStorage::texture_wrap_rd_texture, p_rd_texture, rd_format, rd_texture_view, &ret);
 		SYNC_DEBUG
 		return ret;
 	} else {
 		command_queue.flush_if_pending();
-		return RSG::texture_storage->texture_wrap_rd_texture(p_rd_texture,rd_format,rd_texture_view);
+		return RSG::texture_storage->texture_wrap_rd_texture(p_rd_texture, rd_format, rd_texture_view);
 	}
 }
 
-Image::Format RenderingServerDefault::texture_get_image_format_from_rd_format(const Ref<RDTextureFormat> &r_format, const Ref<RDTextureView> &r_view) const
-{
+Image::Format RenderingServerDefault::texture_get_image_format_from_rd_format(const Ref<RDTextureFormat> &r_format, const Ref<RDTextureView> &r_view) const {
 	return RSG::texture_storage->texture_get_image_format_from_rd_format(r_format, r_view);
 }
-
 
 void RenderingServerDefault::set_default_clear_color(const Color &p_color) {
 	RSG::viewport->set_default_clear_color(p_color);
