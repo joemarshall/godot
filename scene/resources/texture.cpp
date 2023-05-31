@@ -177,20 +177,19 @@ Ref<ImageTexture> ImageTexture::create_from_image(const Ref<Image> &p_image) {
 	return image_texture;
 }
 
-Ref<ImageTexture> ImageTexture::create_from_renderdevice_texture(RID p_rd_texture,const RDTextureFormat &rd_format,const RDTextureView &rd_texture_view)
+Ref<ImageTexture> ImageTexture::create_from_renderdevice_texture(RID p_rd_texture,int w,int h,bool mipmaps,const Ref<RDTextureFormat> &rd_format,const Ref<RDTextureView> &rd_texture_view)
 {
 	ERR_FAIL_COND_V_MSG(p_rd_texture.is_null(),RID,"Texture is null");
 	Ref<ImageTexture> image_texture;
 	image_texture.instantiate();
 	RID new_texture = RenderingServer::get_singleton()->texture_wrap_rd_texture(p_rd_texture,rd_format,rd_texture_view,image_texture->format);
 	image_texture->texture=new_texture;
-	image_texture->w=rd_format.width;
-	image_texture->h=rd_format.height;
-	image_texture->mipmaps=rd_format.mipmaps;
+	image_texture->w=rd_format->width;
+	image_texture->h=rd_format->height;
+	image_texture->mipmaps=rd_format->mipmaps>1?true:false;
 	image_texture->image_stored=true;
 	return image_texture;
 }
-
 
 void ImageTexture::set_image(const Ref<Image> &p_image) {
 	ERR_FAIL_COND_MSG(p_image.is_null() || p_image->is_empty(), "Invalid image");
