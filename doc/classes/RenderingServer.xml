@@ -3362,7 +3362,7 @@
 			<param index="1" name="rd_format" type="RDTextureFormat" />
 			<param index="2" name="rd_texture_view" type="RDTextureView" default="false" />
 			<description>
-			Wrap a render device texture in a Godot texture. This allows you to use it in other things. Mainly used via [ImageTexture::create_from_renderdevice_texture]
+			Wrap a render device texture in a Godot texture. This allows you to use it in other things. Mainly used via [method ImageTexture.create_from_renderdevice_texture]
 			</description>
 		</method>
 		<method name="viewport_attach_camera">
