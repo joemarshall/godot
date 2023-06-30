@@ -36,6 +36,7 @@
 #include "core/io/file_access.h"
 #include "core/io/marshalls.h"
 #include "core/os/os.h"
+#include "core/os/thread.h"
 #include "core/templates/hashfuncs.h"
 #include "drivers/vulkan/vulkan_context.h"
 
@@ -2450,8 +2451,8 @@ static _ALWAYS_INLINE_ void _copy_region(uint8_t const *__restrict p_src, uint8_
 Error RenderingDeviceVulkan::_texture_update(RID p_texture, uint32_t p_layer, const Vector<uint8_t> &p_data, BitField<BarrierMask> p_post_barrier, bool p_use_setup_queue) {
 	_THREAD_SAFE_METHOD_
 
-	ERR_FAIL_COND_V_MSG((draw_list || compute_list) && !p_use_setup_queue, ERR_INVALID_PARAMETER,
-			"Updating textures is forbidden during creation of a draw or compute list");
+	//	ERR_FAIL_COND_V_MSG((draw_list || compute_list) && !p_use_setup_queue, ERR_INVALID_PARAMETER,
+	//			"Updating textures is forbidden during creation of a draw or compute list");
 
 	Texture *texture = texture_owner.get_or_null(p_texture);
 	ERR_FAIL_COND_V(!texture, ERR_INVALID_PARAMETER);
@@ -5841,8 +5842,8 @@ void RenderingDeviceVulkan::uniform_set_set_invalidation_callback(RID p_uniform_
 Error RenderingDeviceVulkan::buffer_update(RID p_buffer, uint32_t p_offset, uint32_t p_size, const void *p_data, BitField<BarrierMask> p_post_barrier) {
 	_THREAD_SAFE_METHOD_
 
-	ERR_FAIL_COND_V_MSG(draw_list, ERR_INVALID_PARAMETER,
-			"Updating buffers is forbidden during creation of a draw list");
+	//	ERR_FAIL_COND_V_MSG(draw_list, ERR_INVALID_PARAMETER,
+	//			"Updating buffers is forbidden during creation of a draw list");
 	ERR_FAIL_COND_V_MSG(compute_list, ERR_INVALID_PARAMETER,
 			"Updating buffers is forbidden during creation of a compute list");
 
@@ -5889,8 +5890,8 @@ Error RenderingDeviceVulkan::buffer_clear(RID p_buffer, uint32_t p_offset, uint3
 
 	ERR_FAIL_COND_V_MSG((p_size % 4) != 0, ERR_INVALID_PARAMETER,
 			"Size must be a multiple of four");
-	ERR_FAIL_COND_V_MSG(draw_list, ERR_INVALID_PARAMETER,
-			"Updating buffers in is forbidden during creation of a draw list");
+	//	ERR_FAIL_COND_V_MSG(draw_list, ERR_INVALID_PARAMETER,
+	//			"Updating buffers in is forbidden during creation of a draw list");
 	ERR_FAIL_COND_V_MSG(compute_list, ERR_INVALID_PARAMETER,
 			"Updating buffers is forbidden during creation of a compute list");
 
@@ -6598,22 +6599,15 @@ RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin_for_screen(Di
 	_THREAD_SAFE_METHOD_
 	ERR_FAIL_COND_V_MSG(local_device.is_valid(), INVALID_ID, "Local devices have no screen");
 
-	ERR_FAIL_COND_V_MSG(draw_list != nullptr, INVALID_ID, "Only one draw list can be active at the same time.");
-	ERR_FAIL_COND_V_MSG(compute_list != nullptr, INVALID_ID, "Only one draw/compute list can be active at the same time.");
-
-	VkCommandBuffer command_buffer = frames[frame].draw_command_buffer;
-
 	if (!context->window_is_valid_swapchain(p_screen)) {
 		return INVALID_ID;
 	}
 
 	Size2i size = Size2i(context->window_get_width(p_screen), context->window_get_height(p_screen));
 
-	_draw_list_allocate(Rect2i(Vector2i(), size), 0, 0);
 #ifdef DEBUG_ENABLED
 	draw_list_framebuffer_format = screen_get_framebuffer_format();
 #endif
-	draw_list_subpass_count = 1;
 
 	VkRenderPassBeginInfo render_pass_begin;
 	render_pass_begin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -6628,6 +6622,10 @@ RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin_for_screen(Di
 
 	render_pass_begin.clearValueCount = 1;
 
+	DrawList *draw_list = NULL;
+	_draw_list_allocate(Rect2i(0, 0, size.width, size.height), 0, 0, render_pass_begin.renderPass, render_pass_begin.framebuffer, &draw_list);
+
+	VkCommandBuffer command_buffer = draw_list->command_buffer;
 	VkClearValue clear_value;
 	clear_value.color.float32[0] = p_clear_color.r;
 	clear_value.color.float32[1] = p_clear_color.g;
@@ -6659,7 +6657,7 @@ RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin_for_screen(Di
 
 	vkCmdSetScissor(command_buffer, 0, 1, &scissor);
 
-	return int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT;
+	return draw_list->id;
 }
 
 Error RenderingDeviceVulkan::_draw_list_setup_framebuffer(Framebuffer *p_framebuffer, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, VkFramebuffer *r_framebuffer, VkRenderPass *r_render_pass, uint32_t *r_subpass_count) {
@@ -6713,7 +6711,7 @@ Error RenderingDeviceVulkan::_draw_list_setup_framebuffer(Framebuffer *p_framebu
 	return OK;
 }
 
-Error RenderingDeviceVulkan::_draw_list_render_pass_begin(Framebuffer *framebuffer, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, const Vector<Color> &p_clear_colors, float p_clear_depth, uint32_t p_clear_stencil, Point2i viewport_offset, Point2i viewport_size, VkFramebuffer vkframebuffer, VkRenderPass render_pass, VkCommandBuffer command_buffer, VkSubpassContents subpass_contents, const Vector<RID> &p_storage_textures) {
+Error RenderingDeviceVulkan::_draw_list_render_pass_begin(DrawList *draw_list, Framebuffer *framebuffer, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, const Vector<Color> &p_clear_colors, float p_clear_depth, uint32_t p_clear_stencil, Point2i viewport_offset, Point2i viewport_size, VkFramebuffer vkframebuffer, VkRenderPass render_pass, VkCommandBuffer command_buffer, VkSubpassContents subpass_contents, const Vector<RID> &p_storage_textures) {
 	VkRenderPassBeginInfo render_pass_begin;
 	render_pass_begin.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	render_pass_begin.pNext = nullptr;
@@ -6800,16 +6798,16 @@ Error RenderingDeviceVulkan::_draw_list_render_pass_begin(Framebuffer *framebuff
 
 			texture->layout = VK_IMAGE_LAYOUT_GENERAL;
 
-			draw_list_storage_textures.push_back(p_storage_textures[i]);
+			draw_list->storage_textures.push_back(p_storage_textures[i]);
 		}
 	}
 
 	vkCmdBeginRenderPass(command_buffer, &render_pass_begin, subpass_contents);
 
 	// Mark textures as bound.
-	draw_list_bound_textures.clear();
-	draw_list_unbind_color_textures = p_final_color_action != FINAL_ACTION_CONTINUE;
-	draw_list_unbind_depth_textures = p_final_depth_action != FINAL_ACTION_CONTINUE;
+	draw_list->bound_textures.clear();
+	draw_list->unbind_color_textures = p_final_color_action != FINAL_ACTION_CONTINUE;
+	draw_list->unbind_depth_textures = p_final_depth_action != FINAL_ACTION_CONTINUE;
 
 	for (int i = 0; i < framebuffer->texture_ids.size(); i++) {
 		Texture *texture = texture_owner.get_or_null(framebuffer->texture_ids[i]);
@@ -6817,7 +6815,7 @@ Error RenderingDeviceVulkan::_draw_list_render_pass_begin(Framebuffer *framebuff
 			continue;
 		}
 		texture->bound = true;
-		draw_list_bound_textures.push_back(framebuffer->texture_ids[i]);
+		draw_list->bound_textures.push_back(framebuffer->texture_ids[i]);
 	}
 
 	return OK;
@@ -6870,11 +6868,6 @@ void RenderingDeviceVulkan::_draw_list_insert_clear_region(DrawList *p_draw_list
 }
 
 RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin(RID p_framebuffer, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, const Vector<Color> &p_clear_color_values, float p_clear_depth, uint32_t p_clear_stencil, const Rect2 &p_region, const Vector<RID> &p_storage_textures) {
-	_THREAD_SAFE_METHOD_
-
-	ERR_FAIL_COND_V_MSG(draw_list != nullptr, INVALID_ID, "Only one draw list can be active at the same time.");
-	ERR_FAIL_COND_V_MSG(compute_list != nullptr && !compute_list->state.allow_draw_overlap, INVALID_ID, "Only one draw/compute list can be active at the same time.");
-
 	Framebuffer *framebuffer = framebuffer_owner.get_or_null(p_framebuffer);
 	ERR_FAIL_COND_V(!framebuffer, INVALID_ID);
 
@@ -6930,25 +6923,25 @@ RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin(RID p_framebu
 
 	VkFramebuffer vkframebuffer;
 	VkRenderPass render_pass;
+	uint32_t subpass_count = 0;
 
-	Error err = _draw_list_setup_framebuffer(framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, &vkframebuffer, &render_pass, &draw_list_subpass_count);
+	Error err = _draw_list_setup_framebuffer(framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, &vkframebuffer, &render_pass, &subpass_count);
 	ERR_FAIL_COND_V(err != OK, INVALID_ID);
 
-	VkCommandBuffer command_buffer = frames[frame].draw_command_buffer;
-	err = _draw_list_render_pass_begin(framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, p_clear_color_values, p_clear_depth, p_clear_stencil, viewport_offset, viewport_size, vkframebuffer, render_pass, command_buffer, VK_SUBPASS_CONTENTS_INLINE, p_storage_textures);
+	DrawList *draw_list;
+	_draw_list_allocate(Rect2i(viewport_offset, viewport_size), 0, 0, render_pass, vkframebuffer, &draw_list);
+	draw_list->subpass_count = subpass_count;
+
+	err = _draw_list_render_pass_begin(draw_list, framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, p_clear_color_values, p_clear_depth, p_clear_stencil, viewport_offset, viewport_size, vkframebuffer, render_pass, draw_list->command_buffer, VK_SUBPASS_CONTENTS_INLINE, p_storage_textures);
 
 	if (err != OK) {
 		return INVALID_ID;
 	}
 
-	draw_list_render_pass = render_pass;
-	draw_list_vkframebuffer = vkframebuffer;
-
-	_draw_list_allocate(Rect2i(viewport_offset, viewport_size), 0, 0);
 #ifdef DEBUG_ENABLED
 	draw_list_framebuffer_format = framebuffer->format_id;
 #endif
-	draw_list_current_subpass = 0;
+	draw_list->state.current_subpass = 0;
 
 	if (needs_clear_color || needs_clear_depth) {
 		_draw_list_insert_clear_region(draw_list, framebuffer, viewport_offset, viewport_size, needs_clear_color, p_clear_color_values, needs_clear_depth, p_clear_depth, p_clear_stencil);
@@ -6962,7 +6955,7 @@ RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin(RID p_framebu
 	viewport.minDepth = 0;
 	viewport.maxDepth = 1.0;
 
-	vkCmdSetViewport(command_buffer, 0, 1, &viewport);
+	vkCmdSetViewport(draw_list->command_buffer, 0, 1, &viewport);
 
 	VkRect2D scissor;
 	scissor.offset.x = viewport_offset.x;
@@ -6970,16 +6963,16 @@ RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin(RID p_framebu
 	scissor.extent.width = viewport_size.width;
 	scissor.extent.height = viewport_size.height;
 
-	vkCmdSetScissor(command_buffer, 0, 1, &scissor);
+	vkCmdSetScissor(draw_list->command_buffer, 0, 1, &scissor);
 
-	return int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT;
+	return draw_list->id;
 }
 
 Error RenderingDeviceVulkan::draw_list_begin_split(RID p_framebuffer, uint32_t p_splits, DrawListID *r_split_ids, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, const Vector<Color> &p_clear_color_values, float p_clear_depth, uint32_t p_clear_stencil, const Rect2 &p_region, const Vector<RID> &p_storage_textures) {
-	_THREAD_SAFE_METHOD_
+	//	_THREAD_SAFE_METHOD_
 
-	ERR_FAIL_COND_V_MSG(draw_list != nullptr, ERR_BUSY, "Only one draw list can be active at the same time.");
-	ERR_FAIL_COND_V_MSG(compute_list != nullptr && !compute_list->state.allow_draw_overlap, ERR_BUSY, "Only one draw/compute list can be active at the same time.");
+	//	ERR_FAIL_COND_V_MSG(draw_list != nullptr, ERR_BUSY, "Only one draw list can be active at the same time.");
+	//	ERR_FAIL_COND_V_MSG(compute_list != nullptr && !compute_list->state.allow_draw_overlap, ERR_BUSY, "Only one draw/compute list can be active at the same time.");
 
 	ERR_FAIL_COND_V(p_splits < 1, ERR_INVALID_DECLARATION);
 
@@ -7031,53 +7024,32 @@ Error RenderingDeviceVulkan::draw_list_begin_split(RID p_framebuffer, uint32_t p
 
 	VkFramebuffer vkframebuffer;
 	VkRenderPass render_pass;
-
-	Error err = _draw_list_setup_framebuffer(framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, &vkframebuffer, &render_pass, &draw_list_subpass_count);
+	uint32_t subpass_count = 0;
+	Error err = _draw_list_setup_framebuffer(framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, &vkframebuffer, &render_pass, &subpass_count);
 	ERR_FAIL_COND_V(err != OK, ERR_CANT_CREATE);
 
-	VkCommandBuffer frame_command_buffer = frames[frame].draw_command_buffer;
-	err = _draw_list_render_pass_begin(framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, p_clear_color_values, p_clear_depth, p_clear_stencil, viewport_offset, viewport_size, vkframebuffer, render_pass, frame_command_buffer, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS, p_storage_textures);
+#ifdef DEBUG_ENABLED
+	draw_list_framebuffer_format = framebuffer->format_id;
+#endif
+	DrawList *draw_list;
+	err = _draw_list_allocate(Rect2i(viewport_offset, viewport_size), p_splits, 0, render_pass, vkframebuffer, &draw_list);
+	if (err != OK) {
+		return err;
+	}
+	draw_list->subpass_count = subpass_count;
+
+	err = _draw_list_render_pass_begin(draw_list, framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, p_clear_color_values, p_clear_depth, p_clear_stencil, viewport_offset, viewport_size, vkframebuffer, render_pass, draw_list->command_buffer, VK_SUBPASS_CONTENTS_SECONDARY_COMMAND_BUFFERS, p_storage_textures);
 
 	if (err != OK) {
 		return ERR_CANT_CREATE;
 	}
 
-	draw_list_current_subpass = 0;
-
-#ifdef DEBUG_ENABLED
-	draw_list_framebuffer_format = framebuffer->format_id;
-#endif
-	draw_list_render_pass = render_pass;
-	draw_list_vkframebuffer = vkframebuffer;
-
-	err = _draw_list_allocate(Rect2i(viewport_offset, viewport_size), p_splits, 0);
-	if (err != OK) {
-		return err;
-	}
-
 	if (needs_clear_color || needs_clear_depth) {
-		_draw_list_insert_clear_region(&draw_list[0], framebuffer, viewport_offset, viewport_size, needs_clear_color, p_clear_color_values, needs_clear_depth, p_clear_depth, p_clear_stencil);
+		_draw_list_insert_clear_region(draw_list, framebuffer, viewport_offset, viewport_size, needs_clear_color, p_clear_color_values, needs_clear_depth, p_clear_depth, p_clear_stencil);
 	}
 
 	for (uint32_t i = 0; i < p_splits; i++) {
-		VkViewport viewport;
-		viewport.x = viewport_offset.x;
-		viewport.y = viewport_offset.y;
-		viewport.width = viewport_size.width;
-		viewport.height = viewport_size.height;
-		viewport.minDepth = 0;
-		viewport.maxDepth = 1.0;
-
-		vkCmdSetViewport(draw_list[i].command_buffer, 0, 1, &viewport);
-
-		VkRect2D scissor;
-		scissor.offset.x = viewport_offset.x;
-		scissor.offset.y = viewport_offset.y;
-		scissor.extent.width = viewport_size.width;
-		scissor.extent.height = viewport_size.height;
-
-		vkCmdSetScissor(draw_list[i].command_buffer, 0, 1, &scissor);
-		r_split_ids[i] = (int64_t(ID_TYPE_SPLIT_DRAW_LIST) << ID_BASE_SHIFT) + i;
+		r_split_ids[i] = draw_list[i + 1].id;
 	}
 
 	return OK;
@@ -7087,46 +7059,78 @@ RenderingDeviceVulkan::DrawList *RenderingDeviceVulkan::_get_draw_list_ptr(DrawL
 	if (p_id < 0) {
 		return nullptr;
 	}
-
-	if (!draw_list) {
-		return nullptr;
-	} else if (p_id == (int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT)) {
-		if (draw_list_split) {
-			return nullptr;
-		}
-		return draw_list;
-	} else if (p_id >> DrawListID(ID_BASE_SHIFT) == ID_TYPE_SPLIT_DRAW_LIST) {
-		if (!draw_list_split) {
-			return nullptr;
-		}
-
-		uint64_t index = p_id & ((DrawListID(1) << DrawListID(ID_BASE_SHIFT)) - 1); // Mask.
-
-		if (index >= draw_list_count) {
-			return nullptr;
-		}
-
-		return &draw_list[index];
-	} else {
+	HashMap<DrawListID, DrawList *>::Iterator i = draw_lists.find(p_id);
+	if (!i) {
 		return nullptr;
 	}
+
+	DrawList *draw_list = i->value;
+	if (draw_list->command_buffer == VK_NULL_HANDLE && draw_list->split_owner != NULL) {
+		// this is a split command list
+		// we are on the drawing thread
+		// allocate the command buffer now
+		draw_list->command_buffer = _allocate_command_buffer_for_secondary();
+		// start the secondary command buffer
+
+		VkCommandBufferInheritanceInfo inheritance_info;
+		inheritance_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
+		inheritance_info.pNext = nullptr;
+		inheritance_info.renderPass = draw_list->render_pass;
+		inheritance_info.subpass = draw_list->state.current_subpass;
+		inheritance_info.framebuffer = draw_list->framebuffer;
+		inheritance_info.occlusionQueryEnable = false;
+		inheritance_info.queryFlags = 0; // ?
+		inheritance_info.pipelineStatistics = 0;
+
+		VkCommandBufferBeginInfo cmdbuf_begin;
+		cmdbuf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		cmdbuf_begin.pNext = nullptr;
+		cmdbuf_begin.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
+		cmdbuf_begin.pInheritanceInfo = &inheritance_info;
+
+		VkResult res = vkBeginCommandBuffer(draw_list->command_buffer, &cmdbuf_begin);
+		if (res) {
+			ERR_FAIL_V_MSG(NULL, "vkBeginCommandBuffer for split command list failed with error " + itos(res) + ".");
+		}
+
+		VkViewport viewport;
+		viewport.x = draw_list->viewport.size.x;
+		viewport.y = draw_list->viewport.size.y;
+		viewport.width = draw_list->viewport.size.width;
+		viewport.height = draw_list->viewport.size.height;
+		viewport.minDepth = 0;
+		viewport.maxDepth = 1.0;
+
+		vkCmdSetViewport(draw_list->command_buffer, 0, 1, &viewport);
+
+		VkRect2D scissor;
+		scissor.offset.x = draw_list->viewport.size.x;
+		scissor.offset.y = draw_list->viewport.size.y;
+		scissor.extent.width = draw_list->viewport.size.width;
+		scissor.extent.height = draw_list->viewport.size.height;
+
+		vkCmdSetScissor(draw_list->command_buffer, 0, 1, &scissor);
+	}
+	return draw_list;
 }
 
 void RenderingDeviceVulkan::draw_list_set_blend_constants(DrawListID p_list, const Color &p_color) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND(!draw_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
-	vkCmdSetBlendConstants(dl->command_buffer, p_color.components);
+	vkCmdSetBlendConstants(draw_list->command_buffer, p_color.components);
 }
 
 void RenderingDeviceVulkan::draw_list_bind_render_pipeline(DrawListID p_list, RID p_render_pipeline) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
+	ERR_FAIL_COND(!draw_list);
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
 	const RenderPipeline *pipeline = render_pipeline_owner.get_or_null(p_render_pipeline);
@@ -7135,60 +7139,60 @@ void RenderingDeviceVulkan::draw_list_bind_render_pipeline(DrawListID p_list, RI
 	ERR_FAIL_COND(pipeline->validation.framebuffer_format != draw_list_framebuffer_format && pipeline->validation.render_pass != draw_list_current_subpass);
 #endif
 
-	if (p_render_pipeline == dl->state.pipeline) {
+	if (p_render_pipeline == draw_list->state.pipeline) {
 		return; // Redundant state, return.
 	}
 
-	dl->state.pipeline = p_render_pipeline;
-	dl->state.pipeline_layout = pipeline->pipeline_layout;
+	draw_list->state.pipeline = p_render_pipeline;
+	draw_list->state.pipeline_layout = pipeline->pipeline_layout;
 
-	vkCmdBindPipeline(dl->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline);
+	vkCmdBindPipeline(draw_list->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->pipeline);
 
-	if (dl->state.pipeline_shader != pipeline->shader) {
+	if (draw_list->state.pipeline_shader != pipeline->shader) {
 		// Shader changed, so descriptor sets may become incompatible.
 
 		// Go through ALL sets, and unbind them (and all those above) if the format is different.
 
 		uint32_t pcount = pipeline->set_formats.size(); // Formats count in this pipeline.
-		dl->state.set_count = MAX(dl->state.set_count, pcount);
+		draw_list->state.set_count = MAX(draw_list->state.set_count, pcount);
 		const uint32_t *pformats = pipeline->set_formats.ptr(); // Pipeline set formats.
 
 		bool sets_valid = true; // Once invalid, all above become invalid.
 		for (uint32_t i = 0; i < pcount; i++) {
 			// If a part of the format is different, invalidate it (and the rest).
-			if (!sets_valid || dl->state.sets[i].pipeline_expected_format != pformats[i]) {
-				dl->state.sets[i].bound = false;
-				dl->state.sets[i].pipeline_expected_format = pformats[i];
+			if (!sets_valid || draw_list->state.sets[i].pipeline_expected_format != pformats[i]) {
+				draw_list->state.sets[i].bound = false;
+				draw_list->state.sets[i].pipeline_expected_format = pformats[i];
 				sets_valid = false;
 			}
 		}
 
-		for (uint32_t i = pcount; i < dl->state.set_count; i++) {
+		for (uint32_t i = pcount; i < draw_list->state.set_count; i++) {
 			// Unbind the ones above (not used) if exist.
-			dl->state.sets[i].bound = false;
+			draw_list->state.sets[i].bound = false;
 		}
 
-		dl->state.set_count = pcount; // Update set count.
+		draw_list->state.set_count = pcount; // Update set count.
 
 		if (pipeline->push_constant_size) {
-			dl->state.pipeline_push_constant_stages = pipeline->push_constant_stages_mask;
+			draw_list->state.pipeline_push_constant_stages = pipeline->push_constant_stages_mask;
 #ifdef DEBUG_ENABLED
-			dl->validation.pipeline_push_constant_supplied = false;
+			draw_list->validation.pipeline_push_constant_supplied = false;
 #endif
 		}
 
-		dl->state.pipeline_shader = pipeline->shader;
+		draw_list->state.pipeline_shader = pipeline->shader;
 	}
 
 #ifdef DEBUG_ENABLED
 	// Update render pass pipeline info.
-	dl->validation.pipeline_active = true;
-	dl->validation.pipeline_dynamic_state = pipeline->validation.dynamic_state;
-	dl->validation.pipeline_vertex_format = pipeline->validation.vertex_format;
-	dl->validation.pipeline_uses_restart_indices = pipeline->validation.uses_restart_indices;
-	dl->validation.pipeline_primitive_divisor = pipeline->validation.primitive_divisor;
-	dl->validation.pipeline_primitive_minimum = pipeline->validation.primitive_minimum;
-	dl->validation.pipeline_push_constant_size = pipeline->push_constant_size;
+	draw_list->validation.pipeline_active = true;
+	draw_list->validation.pipeline_dynamic_state = pipeline->validation.dynamic_state;
+	draw_list->validation.pipeline_vertex_format = pipeline->validation.vertex_format;
+	draw_list->validation.pipeline_uses_restart_indices = pipeline->validation.uses_restart_indices;
+	draw_list->validation.pipeline_primitive_divisor = pipeline->validation.primitive_divisor;
+	draw_list->validation.pipeline_primitive_minimum = pipeline->validation.primitive_minimum;
+	draw_list->validation.pipeline_push_constant_size = pipeline->push_constant_size;
 #endif
 }
 
@@ -7197,24 +7201,24 @@ void RenderingDeviceVulkan::draw_list_bind_uniform_set(DrawListID p_list, RID p_
 	ERR_FAIL_COND_MSG(p_index >= limits.maxBoundDescriptorSets || p_index >= MAX_UNIFORM_SETS,
 			"Attempting to bind a descriptor set (" + itos(p_index) + ") greater than what the hardware supports (" + itos(limits.maxBoundDescriptorSets) + ").");
 #endif
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND(!draw_list);
 
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
 	const UniformSet *uniform_set = uniform_set_owner.get_or_null(p_uniform_set);
 	ERR_FAIL_COND(!uniform_set);
 
-	if (p_index > dl->state.set_count) {
-		dl->state.set_count = p_index;
+	if (p_index > draw_list->state.set_count) {
+		draw_list->state.set_count = p_index;
 	}
 
-	dl->state.sets[p_index].descriptor_set = uniform_set->descriptor_set; // Update set pointer.
-	dl->state.sets[p_index].bound = false; // Needs rebind.
-	dl->state.sets[p_index].uniform_set_format = uniform_set->format;
-	dl->state.sets[p_index].uniform_set = p_uniform_set;
+	draw_list->state.sets[p_index].descriptor_set = uniform_set->descriptor_set; // Update set pointer.
+	draw_list->state.sets[p_index].bound = false; // Needs rebind.
+	draw_list->state.sets[p_index].uniform_set_format = uniform_set->format;
+	draw_list->state.sets[p_index].uniform_set = p_uniform_set;
 
 	uint32_t mst_count = uniform_set->mutable_storage_textures.size();
 	if (mst_count) {
@@ -7233,8 +7237,8 @@ void RenderingDeviceVulkan::draw_list_bind_uniform_set(DrawListID p_list, RID p_
 	{ // Validate that textures bound are not attached as framebuffer bindings.
 		uint32_t attachable_count = uniform_set->attachable_textures.size();
 		const UniformSet::AttachableTexture *attachable_ptr = uniform_set->attachable_textures.ptr();
-		uint32_t bound_count = draw_list_bound_textures.size();
-		const RID *bound_ptr = draw_list_bound_textures.ptr();
+		uint32_t bound_count = draw_list->bound_textures.size();
+		const RID *bound_ptr = draw_list->bound_textures.ptr();
 		for (uint32_t i = 0; i < attachable_count; i++) {
 			for (uint32_t j = 0; j < bound_count; j++) {
 				ERR_FAIL_COND_MSG(attachable_ptr[i].texture == bound_ptr[j],
@@ -7246,106 +7250,111 @@ void RenderingDeviceVulkan::draw_list_bind_uniform_set(DrawListID p_list, RID p_
 }
 
 void RenderingDeviceVulkan::draw_list_bind_vertex_array(DrawListID p_list, RID p_vertex_array) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND(!draw_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
 	const VertexArray *vertex_array = vertex_array_owner.get_or_null(p_vertex_array);
 	ERR_FAIL_COND(!vertex_array);
 
-	if (dl->state.vertex_array == p_vertex_array) {
+	if (draw_list->state.vertex_array == p_vertex_array) {
 		return; // Already set.
 	}
 
-	dl->state.vertex_array = p_vertex_array;
+	draw_list->state.vertex_array = p_vertex_array;
 
 #ifdef DEBUG_ENABLED
-	dl->validation.vertex_format = vertex_array->description;
-	dl->validation.vertex_max_instances_allowed = vertex_array->max_instances_allowed;
+	draw_list->validation.vertex_format = vertex_array->description;
+	draw_list->validation.vertex_max_instances_allowed = vertex_array->max_instances_allowed;
 #endif
-	dl->validation.vertex_array_size = vertex_array->vertex_count;
-	vkCmdBindVertexBuffers(dl->command_buffer, 0, vertex_array->buffers.size(), vertex_array->buffers.ptr(), vertex_array->offsets.ptr());
+	draw_list->validation.vertex_array_size = vertex_array->vertex_count;
+	vkCmdBindVertexBuffers(draw_list->command_buffer, 0, vertex_array->buffers.size(), vertex_array->buffers.ptr(), vertex_array->offsets.ptr());
 }
 
 void RenderingDeviceVulkan::draw_list_bind_index_array(DrawListID p_list, RID p_index_array) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND(!draw_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
 	const IndexArray *index_array = index_array_owner.get_or_null(p_index_array);
 	ERR_FAIL_COND(!index_array);
 
-	if (dl->state.index_array == p_index_array) {
+	if (draw_list->state.index_array == p_index_array) {
 		return; // Already set.
 	}
 
-	dl->state.index_array = p_index_array;
+	draw_list->state.index_array = p_index_array;
 #ifdef DEBUG_ENABLED
-	dl->validation.index_array_max_index = index_array->max_index;
+	draw_list->validation.index_array_max_index = index_array->max_index;
 #endif
-	dl->validation.index_array_size = index_array->indices;
-	dl->validation.index_array_offset = index_array->offset;
+	draw_list->validation.index_array_size = index_array->indices;
+	draw_list->validation.index_array_offset = index_array->offset;
 
-	vkCmdBindIndexBuffer(dl->command_buffer, index_array->buffer, 0, index_array->index_type);
+	vkCmdBindIndexBuffer(draw_list->command_buffer, index_array->buffer, 0, index_array->index_type);
 }
 
 void RenderingDeviceVulkan::draw_list_set_line_width(DrawListID p_list, float p_width) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND(!draw_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
-	vkCmdSetLineWidth(dl->command_buffer, p_width);
+	vkCmdSetLineWidth(draw_list->command_buffer, p_width);
 }
 
 void RenderingDeviceVulkan::draw_list_set_push_constant(DrawListID p_list, const void *p_data, uint32_t p_data_size) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
+	ERR_FAIL_COND(!draw_list);
 
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(p_data_size != dl->validation.pipeline_push_constant_size,
-			"This render pipeline requires (" + itos(dl->validation.pipeline_push_constant_size) + ") bytes of push constant data, supplied: (" + itos(p_data_size) + ")");
+	ERR_FAIL_COND_MSG(p_data_size != draw_list->validation.pipeline_push_constant_size,
+			"This render pipeline requires (" + itos(draw_list->validation.pipeline_push_constant_size) + ") bytes of push constant data, supplied: (" + itos(p_data_size) + ")");
 #endif
-	vkCmdPushConstants(dl->command_buffer, dl->state.pipeline_layout, dl->state.pipeline_push_constant_stages, 0, p_data_size, p_data);
+	vkCmdPushConstants(draw_list->command_buffer, draw_list->state.pipeline_layout, draw_list->state.pipeline_push_constant_stages, 0, p_data_size, p_data);
 #ifdef DEBUG_ENABLED
-	dl->validation.pipeline_push_constant_supplied = true;
+	draw_list->validation.pipeline_push_constant_supplied = true;
 #endif
 }
 
 void RenderingDeviceVulkan::draw_list_draw(DrawListID p_list, bool p_use_indices, uint32_t p_instances, uint32_t p_procedural_vertices) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND(!draw_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.pipeline_active,
+	ERR_FAIL_COND_MSG(!draw_list->validation.pipeline_active,
 			"No render pipeline was set before attempting to draw.");
-	if (dl->validation.pipeline_vertex_format != INVALID_ID) {
+	if (draw_list->validation.pipeline_vertex_format != INVALID_ID) {
 		// Pipeline uses vertices, validate format.
-		ERR_FAIL_COND_MSG(dl->validation.vertex_format == INVALID_ID,
+		ERR_FAIL_COND_MSG(draw_list->validation.vertex_format == INVALID_ID,
 				"No vertex array was bound, and render pipeline expects vertices.");
 		// Make sure format is right.
-		ERR_FAIL_COND_MSG(dl->validation.pipeline_vertex_format != dl->validation.vertex_format,
+		ERR_FAIL_COND_MSG(draw_list->validation.pipeline_vertex_format != draw_list->validation.vertex_format,
 				"The vertex format used to create the pipeline does not match the vertex format bound.");
 		// Make sure number of instances is valid.
-		ERR_FAIL_COND_MSG(p_instances > dl->validation.vertex_max_instances_allowed,
-				"Number of instances requested (" + itos(p_instances) + " is larger than the maximum number supported by the bound vertex array (" + itos(dl->validation.vertex_max_instances_allowed) + ").");
+		ERR_FAIL_COND_MSG(p_instances > draw_list->validation.vertex_max_instances_allowed,
+				"Number of instances requested (" + itos(p_instances) + " is larger than the maximum number supported by the bound vertex array (" + itos(draw_list->validation.vertex_max_instances_allowed) + ").");
 	}
 
-	if (dl->validation.pipeline_push_constant_size > 0) {
+	if (draw_list->validation.pipeline_push_constant_size > 0) {
 		// Using push constants, check that they were supplied.
-		ERR_FAIL_COND_MSG(!dl->validation.pipeline_push_constant_supplied,
+		ERR_FAIL_COND_MSG(!draw_list->validation.pipeline_push_constant_supplied,
 				"The shader in this pipeline requires a push constant to be set before drawing, but it's not present.");
 	}
 
@@ -7353,26 +7362,26 @@ void RenderingDeviceVulkan::draw_list_draw(DrawListID p_list, bool p_use_indices
 
 	// Bind descriptor sets.
 
-	for (uint32_t i = 0; i < dl->state.set_count; i++) {
-		if (dl->state.sets[i].pipeline_expected_format == 0) {
+	for (uint32_t i = 0; i < draw_list->state.set_count; i++) {
+		if (draw_list->state.sets[i].pipeline_expected_format == 0) {
 			continue; // Nothing expected by this pipeline.
 		}
 #ifdef DEBUG_ENABLED
-		if (dl->state.sets[i].pipeline_expected_format != dl->state.sets[i].uniform_set_format) {
-			if (dl->state.sets[i].uniform_set_format == 0) {
+		if (draw_list->state.sets[i].pipeline_expected_format != draw_list->state.sets[i].uniform_set_format) {
+			if (draw_list->state.sets[i].uniform_set_format == 0) {
 				ERR_FAIL_MSG("Uniforms were never supplied for set (" + itos(i) + ") at the time of drawing, which are required by the pipeline");
-			} else if (uniform_set_owner.owns(dl->state.sets[i].uniform_set)) {
-				UniformSet *us = uniform_set_owner.get_or_null(dl->state.sets[i].uniform_set);
-				ERR_FAIL_MSG("Uniforms supplied for set (" + itos(i) + "):\n" + _shader_uniform_debug(us->shader_id, us->shader_set) + "\nare not the same format as required by the pipeline shader. Pipeline shader requires the following bindings:\n" + _shader_uniform_debug(dl->state.pipeline_shader));
+			} else if (uniform_set_owner.owns(draw_list->state.sets[i].uniform_set)) {
+				UniformSet *us = uniform_set_owner.get_or_null(draw_list->state.sets[i].uniform_set);
+				ERR_FAIL_MSG("Uniforms supplied for set (" + itos(i) + "):\n" + _shader_uniform_debug(us->shader_id, us->shader_set) + "\nare not the same format as required by the pipeline shader. Pipeline shader requires the following bindings:\n" + _shader_uniform_debug(draw_list->state.pipeline_shader));
 			} else {
-				ERR_FAIL_MSG("Uniforms supplied for set (" + itos(i) + ", which was was just freed) are not the same format as required by the pipeline shader. Pipeline shader requires the following bindings:\n" + _shader_uniform_debug(dl->state.pipeline_shader));
+				ERR_FAIL_MSG("Uniforms supplied for set (" + itos(i) + ", which was was just freed) are not the same format as required by the pipeline shader. Pipeline shader requires the following bindings:\n" + _shader_uniform_debug(draw_list->state.pipeline_shader));
 			}
 		}
 #endif
-		if (!dl->state.sets[i].bound) {
+		if (!draw_list->state.sets[i].bound) {
 			// All good, see if this requires re-binding.
-			vkCmdBindDescriptorSets(dl->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, dl->state.pipeline_layout, i, 1, &dl->state.sets[i].descriptor_set, 0, nullptr);
-			dl->state.sets[i].bound = true;
+			vkCmdBindDescriptorSets(draw_list->command_buffer, VK_PIPELINE_BIND_POINT_GRAPHICS, draw_list->state.pipeline_layout, i, 1, &draw_list->state.sets[i].descriptor_set, 0, nullptr);
+			draw_list->state.sets[i].bound = true;
 		}
 	}
 
@@ -7381,62 +7390,63 @@ void RenderingDeviceVulkan::draw_list_draw(DrawListID p_list, bool p_use_indices
 		ERR_FAIL_COND_MSG(p_procedural_vertices > 0,
 				"Procedural vertices can't be used together with indices.");
 
-		ERR_FAIL_COND_MSG(!dl->validation.index_array_size,
+		ERR_FAIL_COND_MSG(!draw_list->validation.index_array_size,
 				"Draw command requested indices, but no index buffer was set.");
 
-		ERR_FAIL_COND_MSG(dl->validation.pipeline_uses_restart_indices != dl->validation.index_buffer_uses_restart_indices,
+		ERR_FAIL_COND_MSG(draw_list->validation.pipeline_uses_restart_indices != draw_list->validation.index_buffer_uses_restart_indices,
 				"The usage of restart indices in index buffer does not match the render primitive in the pipeline.");
 #endif
-		uint32_t to_draw = dl->validation.index_array_size;
+		uint32_t to_draw = draw_list->validation.index_array_size;
 
 #ifdef DEBUG_ENABLED
-		ERR_FAIL_COND_MSG(to_draw < dl->validation.pipeline_primitive_minimum,
-				"Too few indices (" + itos(to_draw) + ") for the render primitive set in the render pipeline (" + itos(dl->validation.pipeline_primitive_minimum) + ").");
+		ERR_FAIL_COND_MSG(to_draw < draw_list->validation.pipeline_primitive_minimum,
+				"Too few indices (" + itos(to_draw) + ") for the render primitive set in the render pipeline (" + itos(draw_list->validation.pipeline_primitive_minimum) + ").");
 
-		ERR_FAIL_COND_MSG((to_draw % dl->validation.pipeline_primitive_divisor) != 0,
-				"Index amount (" + itos(to_draw) + ") must be a multiple of the amount of indices required by the render primitive (" + itos(dl->validation.pipeline_primitive_divisor) + ").");
+		ERR_FAIL_COND_MSG((to_draw % draw_list->validation.pipeline_primitive_divisor) != 0,
+				"Index amount (" + itos(to_draw) + ") must be a multiple of the amount of indices required by the render primitive (" + itos(draw_list->validation.pipeline_primitive_divisor) + ").");
 #endif
-		vkCmdDrawIndexed(dl->command_buffer, to_draw, p_instances, dl->validation.index_array_offset, 0, 0);
+		vkCmdDrawIndexed(draw_list->command_buffer, to_draw, p_instances, draw_list->validation.index_array_offset, 0, 0);
 	} else {
 		uint32_t to_draw;
 
 		if (p_procedural_vertices > 0) {
 #ifdef DEBUG_ENABLED
-			ERR_FAIL_COND_MSG(dl->validation.pipeline_vertex_format != INVALID_ID,
+			ERR_FAIL_COND_MSG(draw_list->validation.pipeline_vertex_format != INVALID_ID,
 					"Procedural vertices requested, but pipeline expects a vertex array.");
 #endif
 			to_draw = p_procedural_vertices;
 		} else {
 #ifdef DEBUG_ENABLED
-			ERR_FAIL_COND_MSG(dl->validation.pipeline_vertex_format == INVALID_ID,
+			ERR_FAIL_COND_MSG(draw_list->validation.pipeline_vertex_format == INVALID_ID,
 					"Draw command lacks indices, but pipeline format does not use vertices.");
 #endif
-			to_draw = dl->validation.vertex_array_size;
+			to_draw = draw_list->validation.vertex_array_size;
 		}
 
 #ifdef DEBUG_ENABLED
-		ERR_FAIL_COND_MSG(to_draw < dl->validation.pipeline_primitive_minimum,
-				"Too few vertices (" + itos(to_draw) + ") for the render primitive set in the render pipeline (" + itos(dl->validation.pipeline_primitive_minimum) + ").");
+		ERR_FAIL_COND_MSG(to_draw < draw_list->validation.pipeline_primitive_minimum,
+				"Too few vertices (" + itos(to_draw) + ") for the render primitive set in the render pipeline (" + itos(draw_list->validation.pipeline_primitive_minimum) + ").");
 
-		ERR_FAIL_COND_MSG((to_draw % dl->validation.pipeline_primitive_divisor) != 0,
-				"Vertex amount (" + itos(to_draw) + ") must be a multiple of the amount of vertices required by the render primitive (" + itos(dl->validation.pipeline_primitive_divisor) + ").");
+		ERR_FAIL_COND_MSG((to_draw % draw_list->validation.pipeline_primitive_divisor) != 0,
+				"Vertex amount (" + itos(to_draw) + ") must be a multiple of the amount of vertices required by the render primitive (" + itos(draw_list->validation.pipeline_primitive_divisor) + ").");
 #endif
 
-		vkCmdDraw(dl->command_buffer, to_draw, p_instances, 0, 0);
+		vkCmdDraw(draw_list->command_buffer, to_draw, p_instances, 0, 0);
 	}
 }
 
 void RenderingDeviceVulkan::draw_list_enable_scissor(DrawListID p_list, const Rect2 &p_rect) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
 
-	ERR_FAIL_COND(!dl);
+	ERR_FAIL_COND(!draw_list);
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 	Rect2i rect = p_rect;
-	rect.position += dl->viewport.position;
+	rect.position += draw_list->viewport.position;
 
-	rect = dl->viewport.intersection(rect);
+	rect = draw_list->viewport.intersection(rect);
 
 	if (rect.get_area() == 0) {
 		return;
@@ -7447,22 +7457,23 @@ void RenderingDeviceVulkan::draw_list_enable_scissor(DrawListID p_list, const Re
 	scissor.extent.width = rect.size.width;
 	scissor.extent.height = rect.size.height;
 
-	vkCmdSetScissor(dl->command_buffer, 0, 1, &scissor);
+	vkCmdSetScissor(draw_list->command_buffer, 0, 1, &scissor);
 }
 
 void RenderingDeviceVulkan::draw_list_disable_scissor(DrawListID p_list) {
-	DrawList *dl = _get_draw_list_ptr(p_list);
-	ERR_FAIL_COND(!dl);
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
+	ERR_FAIL_COND(!draw_list);
+	ERR_FAIL_COND_MSG(draw_list->owner_thread != Thread::get_caller_id(), "Draw lists can only be used in the thread they were created on.");
 #ifdef DEBUG_ENABLED
-	ERR_FAIL_COND_MSG(!dl->validation.active, "Submitted Draw Lists can no longer be modified.");
+	ERR_FAIL_COND_MSG(!draw_list->validation.active, "Submitted Draw Lists can no longer be modified.");
 #endif
 
 	VkRect2D scissor;
-	scissor.offset.x = dl->viewport.position.x;
-	scissor.offset.y = dl->viewport.position.y;
-	scissor.extent.width = dl->viewport.size.width;
-	scissor.extent.height = dl->viewport.size.height;
-	vkCmdSetScissor(dl->command_buffer, 0, 1, &scissor);
+	scissor.offset.x = draw_list->viewport.position.x;
+	scissor.offset.y = draw_list->viewport.position.y;
+	scissor.extent.width = draw_list->viewport.size.width;
+	scissor.extent.height = draw_list->viewport.size.height;
+	vkCmdSetScissor(draw_list->command_buffer, 0, 1, &scissor);
 }
 
 uint32_t RenderingDeviceVulkan::draw_list_get_current_pass() {
@@ -7470,175 +7481,301 @@ uint32_t RenderingDeviceVulkan::draw_list_get_current_pass() {
 }
 
 RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_switch_to_next_pass() {
-	ERR_FAIL_COND_V(draw_list == nullptr, INVALID_ID);
-	ERR_FAIL_COND_V(draw_list_current_subpass >= draw_list_subpass_count - 1, INVALID_FORMAT_ID);
+	DrawListID id;
+	draw_list_switch_to_next_pass_split(0, &id);
 
-	draw_list_current_subpass++;
+	/*	DrawList* draw_list=_get_current_draw_list();
+		ERR_FAIL_COND_V(draw_list == nullptr, INVALID_ID);
+		ERR_FAIL_COND_V(draw_list->state.current_subpass >= draw_list->subpass_count - 1, INVALID_FORMAT_ID);
 
-	Rect2i viewport;
-	_draw_list_free(&viewport);
+		VkCommandBuffer command_buffer=draw_list->command_buffer;
+		Rect2i viewport;
+		VkRenderPass render_pass=draw_list->render_pass;
+		VkFramebuffer framebuffer=draw_list->framebuffer;
+		uint32_t subpass=draw_list->state.current_subpass;
 
-	vkCmdNextSubpass(frames[frame].draw_command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+		_draw_list_push_split_commands(draw_list,&viewport);
+		subpass+=1;
 
-	_draw_list_allocate(viewport, 0, draw_list_current_subpass);
+		vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
 
-	return int64_t(ID_TYPE_DRAW_LIST) << ID_BASE_SHIFT;
+		draw_list->command_buffer=NULL; // don't enqueue this yet
+		_draw_list_free(draw_list);
+
+		_draw_list_allocate(viewport, 0, subpass,render_pass,framebuffer,&draw_list,command_buffer);
+		_set_current_draw_list(draw_list);*/
+
+	return id;
 }
 Error RenderingDeviceVulkan::draw_list_switch_to_next_pass_split(uint32_t p_splits, DrawListID *r_split_ids) {
+	DrawList *draw_list = _get_current_draw_list();
 	ERR_FAIL_COND_V(draw_list == nullptr, ERR_INVALID_PARAMETER);
-	ERR_FAIL_COND_V(draw_list_current_subpass >= draw_list_subpass_count - 1, ERR_INVALID_PARAMETER);
-
-	draw_list_current_subpass++;
+	ERR_FAIL_COND_V(draw_list->state.current_subpass >= draw_list->subpass_count - 1, ERR_INVALID_PARAMETER);
 
 	Rect2i viewport;
-	_draw_list_free(&viewport);
+	_draw_list_push_split_commands(draw_list, &viewport);
 
-	vkCmdNextSubpass(frames[frame].draw_command_buffer, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdNextSubpass(draw_list->command_buffer, VK_SUBPASS_CONTENTS_INLINE);
 
-	_draw_list_allocate(viewport, p_splits, draw_list_current_subpass);
-
-	for (uint32_t i = 0; i < p_splits; i++) {
-		r_split_ids[i] = (int64_t(ID_TYPE_SPLIT_DRAW_LIST) << ID_BASE_SHIFT) + i;
-	}
-
-	return OK;
-}
-
-Error RenderingDeviceVulkan::_draw_list_allocate(const Rect2i &p_viewport, uint32_t p_splits, uint32_t p_subpass) {
-	// Lock while draw_list is active.
-	_THREAD_SAFE_LOCK_
+	DrawList *new_draw_list = NULL;
 
 	if (p_splits == 0) {
-		draw_list = memnew(DrawList);
-		draw_list->command_buffer = frames[frame].draw_command_buffer;
-		draw_list->viewport = p_viewport;
-		draw_list_count = 0;
-		draw_list_split = false;
+		new_draw_list = memnew(DrawList);
+		new_draw_list->command_buffer = draw_list->command_buffer;
+		new_draw_list->viewport = viewport;
+		new_draw_list->framebuffer = draw_list->framebuffer;
+		new_draw_list->render_pass = draw_list->render_pass;
+		new_draw_list->split_count = 0;
+		new_draw_list->state.current_subpass = draw_list->state.current_subpass + 1;
+		r_split_ids[0] = new_draw_list->id;
 	} else {
-		if (p_splits > (uint32_t)split_draw_list_allocators.size()) {
-			uint32_t from = split_draw_list_allocators.size();
-			split_draw_list_allocators.resize(p_splits);
-			for (uint32_t i = from; i < p_splits; i++) {
-				VkCommandPoolCreateInfo cmd_pool_info;
-				cmd_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-				cmd_pool_info.pNext = nullptr;
-				cmd_pool_info.queueFamilyIndex = context->get_graphics_queue_family_index();
-				cmd_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		// allocate split draw lists for writing on multiple threads
+		// can't create and begin command buffer until a draw function is called on a thread
+		// so we know which pool it needs to use (as pools are linked to threads)
 
-				VkResult res = vkCreateCommandPool(device, &cmd_pool_info, nullptr, &split_draw_list_allocators.write[i].command_pool);
-				ERR_FAIL_COND_V_MSG(res, ERR_CANT_CREATE, "vkCreateCommandPool failed with error " + itos(res) + ".");
-
-				for (int j = 0; j < frame_count; j++) {
-					VkCommandBuffer command_buffer;
-
-					VkCommandBufferAllocateInfo cmdbuf;
-					// No command buffer exists, create it.
-					cmdbuf.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-					cmdbuf.pNext = nullptr;
-					cmdbuf.commandPool = split_draw_list_allocators[i].command_pool;
-					cmdbuf.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-					cmdbuf.commandBufferCount = 1;
-
-					VkResult err = vkAllocateCommandBuffers(device, &cmdbuf, &command_buffer);
-					ERR_FAIL_COND_V_MSG(err, ERR_CANT_CREATE, "vkAllocateCommandBuffers failed with error " + itos(err) + ".");
-
-					split_draw_list_allocators.write[i].command_buffers.push_back(command_buffer);
-				}
-			}
-		}
-		draw_list = memnew_arr(DrawList, p_splits);
-		draw_list_count = p_splits;
-		draw_list_split = true;
-
+		new_draw_list = memnew_arr(DrawList, p_splits + 1);
 		for (uint32_t i = 0; i < p_splits; i++) {
-			// Take a command buffer and initialize it.
-			VkCommandBuffer command_buffer = split_draw_list_allocators[i].command_buffers[frame];
-
-			VkCommandBufferInheritanceInfo inheritance_info;
-			inheritance_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_INFO;
-			inheritance_info.pNext = nullptr;
-			inheritance_info.renderPass = draw_list_render_pass;
-			inheritance_info.subpass = p_subpass;
-			inheritance_info.framebuffer = draw_list_vkframebuffer;
-			inheritance_info.occlusionQueryEnable = false;
-			inheritance_info.queryFlags = 0; // ?
-			inheritance_info.pipelineStatistics = 0;
-
-			VkCommandBufferBeginInfo cmdbuf_begin;
-			cmdbuf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-			cmdbuf_begin.pNext = nullptr;
-			cmdbuf_begin.flags = VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT | VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
-			cmdbuf_begin.pInheritanceInfo = &inheritance_info;
-
-			VkResult res = vkResetCommandBuffer(command_buffer, 0);
-			if (res) {
-				memdelete_arr(draw_list);
-				draw_list = nullptr;
-				ERR_FAIL_V_MSG(ERR_CANT_CREATE, "vkResetCommandBuffer failed with error " + itos(res) + ".");
-			}
-
-			res = vkBeginCommandBuffer(command_buffer, &cmdbuf_begin);
-			if (res) {
-				memdelete_arr(draw_list);
-				draw_list = nullptr;
-				ERR_FAIL_V_MSG(ERR_CANT_CREATE, "vkBeginCommandBuffer failed with error " + itos(res) + ".");
-			}
-
-			draw_list[i].command_buffer = command_buffer;
-			draw_list[i].viewport = p_viewport;
+			new_draw_list[i + 1].command_buffer = VK_NULL_HANDLE;
+			new_draw_list[i + 1].owner_thread = -1;
+			new_draw_list[i + 1].viewport = viewport;
+			new_draw_list[i + 1].framebuffer = draw_list->framebuffer;
+			new_draw_list[i + 1].render_pass = draw_list->render_pass;
+			new_draw_list[i + 1].split_count = 0;
+			new_draw_list[i + 1].split_owner = new_draw_list;
+		}
+		new_draw_list[0].command_buffer = draw_list->command_buffer;
+		draw_list[0].viewport = viewport;
+		draw_list[0].split_count = p_splits;
+		draw_list[0].framebuffer = draw_list->framebuffer;
+		draw_list[0].render_pass = draw_list->render_pass;
+		for (uint32_t i = 0; i < p_splits; i++) {
+			r_split_ids[i] = new_draw_list[i + 1].id;
 		}
 	}
+
+	_draw_list_free(draw_list);
+	_set_current_draw_list(new_draw_list);
 
 	return OK;
 }
 
-void RenderingDeviceVulkan::_draw_list_free(Rect2i *r_last_viewport) {
-	if (draw_list_split) {
+const Error RenderingDeviceVulkan::_get_thread_command_pool(RenderingDeviceVulkan::ThreadCommandPool &pool) {
+	// if we have a command pool on this thread
+	Thread::ID us = Thread::get_caller_id();
+	HashMap<Thread::ID, ThreadCommandPool>::Iterator E = thread_command_pools.find(us);
+	if (E) {
+		pool = E->value;
+	} else {
+		ThreadCommandPool new_pool;
+		VkCommandPoolCreateInfo cmd_pool_info;
+		cmd_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		cmd_pool_info.pNext = nullptr;
+		cmd_pool_info.queueFamilyIndex = context->get_graphics_queue_family_index();
+		cmd_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+
+		for (int c = 0; c < frame_count; c++) {
+			VkCommandPool cmd_pool;
+			VkResult res = vkCreateCommandPool(device, &cmd_pool_info, nullptr, &cmd_pool);
+			ERR_FAIL_COND_V_MSG(res, ERR_CANT_CREATE, "vkCreateCommandPool failed with error " + itos(res) + ".");
+			new_pool.frame_pools.push_back(cmd_pool);
+		}
+		VkResult res = vkCreateCommandPool(device, &cmd_pool_info, nullptr, &(new_pool.compute_pool));
+		ERR_FAIL_COND_V_MSG(res, ERR_CANT_CREATE, "vkCreateCommandPool failed with error " + itos(res) + ".");
+		thread_command_pools.insert(us, new_pool);
+		pool = new_pool;
+	}
+	return OK;
+}
+
+VkCommandBuffer RenderingDeviceVulkan::_allocate_command_buffer_for_drawing() {
+	// allocate command buffer on current thread / frame
+	ThreadCommandPool pool;
+	Error e = _get_thread_command_pool(pool);
+	ERR_FAIL_COND_V_MSG(e != OK, VK_NULL_HANDLE, "Couldn't get thread command pool");
+
+	VkCommandBufferAllocateInfo cmdbuf;
+	cmdbuf.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdbuf.pNext = nullptr;
+	cmdbuf.commandPool = pool.frame_pools[frame];
+	cmdbuf.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdbuf.commandBufferCount = 1;
+
+	VkCommandBuffer retval = NULL;
+	VkResult err = vkAllocateCommandBuffers(device, &cmdbuf, &retval);
+	ERR_FAIL_COND_V_MSG(err, NULL, "vkAllocateCommandBuffers failed with error " + itos(err) + ".");
+	return retval;
+}
+
+VkCommandBuffer RenderingDeviceVulkan::_allocate_command_buffer_for_secondary() {
+	// allocate secondary command buffer on current thread / frame
+	ThreadCommandPool pool;
+	Error e = _get_thread_command_pool(pool);
+	ERR_FAIL_COND_V_MSG(e != OK, VK_NULL_HANDLE, "Couldn't get thread command pool");
+
+	VkCommandBufferAllocateInfo cmdbuf;
+	cmdbuf.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdbuf.pNext = nullptr;
+	cmdbuf.commandPool = pool.frame_pools[frame];
+	cmdbuf.level = VK_COMMAND_BUFFER_LEVEL_SECONDARY;
+	cmdbuf.commandBufferCount = 1;
+
+	VkCommandBuffer retval = NULL;
+	VkResult err = vkAllocateCommandBuffers(device, &cmdbuf, &retval);
+	ERR_FAIL_COND_V_MSG(err, NULL, "vkAllocateCommandBuffers failed with error " + itos(err) + ".");
+	return retval;
+}
+
+VkCommandBuffer RenderingDeviceVulkan::_allocate_command_buffer_for_compute() {
+	// allocate command buffer on current thread
+	ThreadCommandPool pool;
+	Error e = _get_thread_command_pool(pool);
+	ERR_FAIL_COND_V_MSG(e != OK, VK_NULL_HANDLE, "Couldn't get thread command pool");
+
+	VkCommandBufferAllocateInfo cmdbuf;
+	cmdbuf.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmdbuf.pNext = nullptr;
+	cmdbuf.commandPool = pool.compute_pool;
+	cmdbuf.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	cmdbuf.commandBufferCount = 1;
+
+	VkCommandBuffer retval = NULL;
+	VkResult err = vkAllocateCommandBuffers(device, &cmdbuf, &retval);
+	ERR_FAIL_COND_V_MSG(err, NULL, "vkAllocateCommandBuffers failed with error " + itos(err) + ".");
+	return retval;
+}
+
+RenderingDeviceVulkan::DrawList *RenderingDeviceVulkan::_get_current_draw_list() {
+	Thread::ID us = Thread::get_caller_id();
+	HashMap<Thread::ID, ThreadCommandPool>::Iterator E = thread_command_pools.find(us);
+	if (E) {
+		return E->value.current_draw_list;
+	} else {
+		return NULL;
+	}
+}
+
+void RenderingDeviceVulkan::_set_current_draw_list(DrawList *draw_list) {
+	Thread::ID us = Thread::get_caller_id();
+	HashMap<Thread::ID, ThreadCommandPool>::Iterator E = thread_command_pools.find(us);
+	if (E) {
+		E->value.current_draw_list = draw_list;
+	}
+}
+
+Error RenderingDeviceVulkan::_draw_list_allocate(const Rect2i &p_viewport, uint32_t p_splits, uint32_t p_subpass, VkRenderPass render_pass, VkFramebuffer framebuffer, DrawList **p_draw_list) {
+	// allocate a single draw list - we can create the command buffer now
+	DrawList *draw_list = NULL;
+	if (p_splits == 0) {
+		draw_list = memnew(DrawList);
+		draw_list->command_buffer = _allocate_command_buffer_for_drawing();
+		draw_list->viewport = p_viewport;
+		draw_list->framebuffer = framebuffer;
+		draw_list->render_pass = render_pass;
+		draw_list->split_count = 0;
+
+		_THREAD_SAFE_LOCK_
+		draw_list->id = draw_list_next_id;
+		draw_list_next_id++;
+		_THREAD_SAFE_UNLOCK_
+
+		VkCommandBufferBeginInfo cmdbuf_begin;
+		cmdbuf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		cmdbuf_begin.pNext = nullptr;
+		cmdbuf_begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		cmdbuf_begin.pInheritanceInfo = nullptr;
+
+		VkResult err = vkBeginCommandBuffer(draw_list->command_buffer, &cmdbuf_begin);
+		ERR_FAIL_COND_V_MSG(err, FAILED, "vkBeginCommandBuffer failed with error " + itos(err) + ".");
+	} else {
+		// allocate split draw lists for writing on multiple threads
+		// can't create and begin command buffer until a draw function is called on a thread
+		// so we know which pool it needs to use (as pools are linked to threads)
+
+		_THREAD_SAFE_LOCK_
+
+		DrawListID start_id = draw_list_next_id;
+		draw_list_next_id += p_splits + 1;
+
+		_THREAD_SAFE_UNLOCK_
+
+		draw_list = memnew_arr(DrawList, p_splits + 1);
+		for (uint32_t i = 0; i < p_splits; i++) {
+			draw_list[i + 1].command_buffer = VK_NULL_HANDLE;
+			draw_list[i + 1].owner_thread = -1;
+			draw_list[i + 1].viewport = p_viewport;
+			draw_list[i + 1].framebuffer = framebuffer;
+			draw_list[i + 1].render_pass = render_pass;
+			draw_list[i + 1].split_count = 0;
+			draw_list[i + 1].split_owner = draw_list;
+			draw_list[i + 1].id = start_id + p_splits + 1;
+		}
+		draw_list[0].command_buffer = _allocate_command_buffer_for_drawing();
+		draw_list[0].viewport = p_viewport;
+		draw_list[0].split_count = p_splits;
+		draw_list[0].framebuffer = framebuffer;
+		draw_list[0].render_pass = render_pass;
+		draw_list[0].id = start_id;
+
+		VkCommandBufferBeginInfo cmdbuf_begin;
+		cmdbuf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		cmdbuf_begin.pNext = nullptr;
+		cmdbuf_begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		cmdbuf_begin.pInheritanceInfo = nullptr;
+
+		VkResult err = vkBeginCommandBuffer(draw_list->command_buffer, &cmdbuf_begin);
+		ERR_FAIL_COND_V_MSG(err, FAILED, "vkBeginCommandBuffer failed with error " + itos(err) + ".");
+	}
+
+	*p_draw_list = draw_list;
+	return OK;
+}
+
+void RenderingDeviceVulkan::_draw_list_push_split_commands(DrawList *draw_list, Rect2i *r_last_viewport) {
+	if (draw_list->split_count > 0) {
 		// Send all command buffers.
-		VkCommandBuffer *command_buffers = (VkCommandBuffer *)alloca(sizeof(VkCommandBuffer) * draw_list_count);
-		for (uint32_t i = 0; i < draw_list_count; i++) {
-			vkEndCommandBuffer(draw_list[i].command_buffer);
-			command_buffers[i] = draw_list[i].command_buffer;
+		VkCommandBuffer *command_buffers = (VkCommandBuffer *)alloca(sizeof(VkCommandBuffer) * draw_list->split_count);
+		for (uint32_t i = 0; i < draw_list->split_count; i++) {
+			vkEndCommandBuffer(draw_list[i + 1].command_buffer);
+			command_buffers[i] = draw_list[i + 1].command_buffer;
 			if (r_last_viewport) {
-				if (i == 0 || draw_list[i].viewport_set) {
-					*r_last_viewport = draw_list[i].viewport;
+				if (i == 0 || draw_list[i + 1].viewport_set) {
+					*r_last_viewport = draw_list[i + 1].viewport;
 				}
 			}
 		}
 
-		vkCmdExecuteCommands(frames[frame].draw_command_buffer, draw_list_count, command_buffers);
-		memdelete_arr(draw_list);
-		draw_list = nullptr;
-
+		vkCmdExecuteCommands(draw_list->command_buffer, draw_list->split_count, command_buffers);
 	} else {
 		if (r_last_viewport) {
 			*r_last_viewport = draw_list->viewport;
 		}
-		// Just end the list.
-		memdelete(draw_list);
-		draw_list = nullptr;
 	}
+}
 
-	// Draw_list is no longer active.
-	_THREAD_SAFE_UNLOCK_
+void RenderingDeviceVulkan::_draw_list_free(DrawList *draw_list) {
+	if (draw_list->split_count > 0) {
+		memdelete_arr(draw_list);
+	} else {
+		memdelete(draw_list);
+	}
 }
 
 void RenderingDeviceVulkan::draw_list_end(BitField<BarrierMask> p_post_barrier) {
 	_THREAD_SAFE_METHOD_
 
-	ERR_FAIL_COND_MSG(!draw_list, "Immediate draw list is already inactive.");
+	DrawList *draw_list = _get_current_draw_list();
 
-	_draw_list_free();
+	ERR_FAIL_COND_MSG(!draw_list, "No draw list on current thread");
 
-	vkCmdEndRenderPass(frames[frame].draw_command_buffer);
+	vkCmdEndRenderPass(draw_list->command_buffer);
 
-	for (int i = 0; i < draw_list_bound_textures.size(); i++) {
-		Texture *texture = texture_owner.get_or_null(draw_list_bound_textures[i]);
+	for (int i = 0; i < draw_list->bound_textures.size(); i++) {
+		Texture *texture = texture_owner.get_or_null(draw_list->bound_textures[i]);
 		ERR_CONTINUE(!texture); // Wtf.
-		if (draw_list_unbind_color_textures && (texture->usage_flags & TEXTURE_USAGE_COLOR_ATTACHMENT_BIT)) {
+		if (draw_list->unbind_color_textures && (texture->usage_flags & TEXTURE_USAGE_COLOR_ATTACHMENT_BIT)) {
 			texture->bound = false;
 		}
-		if (draw_list_unbind_depth_textures && (texture->usage_flags & TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
+		if (draw_list->unbind_depth_textures && (texture->usage_flags & TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT)) {
 			texture->bound = false;
 		}
 	}
@@ -7662,14 +7799,14 @@ void RenderingDeviceVulkan::draw_list_end(BitField<BarrierMask> p_post_barrier) 
 		barrier_flags = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	draw_list_bound_textures.clear();
+	draw_list->bound_textures.clear();
 
 	VkImageMemoryBarrier *image_barriers = nullptr;
 
-	uint32_t image_barrier_count = draw_list_storage_textures.size();
+	uint32_t image_barrier_count = draw_list->storage_textures.size();
 
 	if (image_barrier_count) {
-		image_barriers = (VkImageMemoryBarrier *)alloca(sizeof(VkImageMemoryBarrier) * draw_list_storage_textures.size());
+		image_barriers = (VkImageMemoryBarrier *)alloca(sizeof(VkImageMemoryBarrier) * draw_list->storage_textures.size());
 	}
 
 	uint32_t src_stage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -7681,7 +7818,7 @@ void RenderingDeviceVulkan::draw_list_end(BitField<BarrierMask> p_post_barrier) 
 	}
 
 	for (uint32_t i = 0; i < image_barrier_count; i++) {
-		Texture *texture = texture_owner.get_or_null(draw_list_storage_textures[i]);
+		Texture *texture = texture_owner.get_or_null(draw_list->storage_textures[i]);
 
 		VkImageMemoryBarrier &image_memory_barrier = image_barriers[i];
 		image_memory_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -7703,7 +7840,7 @@ void RenderingDeviceVulkan::draw_list_end(BitField<BarrierMask> p_post_barrier) 
 		texture->layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 
-	draw_list_storage_textures.clear();
+	draw_list->storage_textures.clear();
 
 	// To ensure proper synchronization, we must make sure rendering is done before:
 	// * Some buffer is copied.
@@ -7716,7 +7853,7 @@ void RenderingDeviceVulkan::draw_list_end(BitField<BarrierMask> p_post_barrier) 
 	mem_barrier.dstAccessMask = access_flags;
 
 	if (image_barrier_count > 0 || p_post_barrier != BARRIER_MASK_NO_BARRIER) {
-		vkCmdPipelineBarrier(frames[frame].draw_command_buffer, src_stage, barrier_flags, 0, 1, &mem_barrier, 0, nullptr, image_barrier_count, image_barriers);
+		vkCmdPipelineBarrier(draw_list->command_buffer, src_stage, barrier_flags, 0, 1, &mem_barrier, 0, nullptr, image_barrier_count, image_barriers);
 	}
 
 #ifdef FORCE_FULL_BARRIER
@@ -7729,7 +7866,7 @@ void RenderingDeviceVulkan::draw_list_end(BitField<BarrierMask> p_post_barrier) 
 /***********************/
 
 RenderingDevice::ComputeListID RenderingDeviceVulkan::compute_list_begin(bool p_allow_draw_overlap) {
-	ERR_FAIL_COND_V_MSG(!p_allow_draw_overlap && draw_list != nullptr, INVALID_ID, "Only one draw list can be active at the same time.");
+	//	ERR_FAIL_COND_V_MSG(!p_allow_draw_overlap && draw_list != nullptr, INVALID_ID, "Only one draw list can be active at the same time.");
 	ERR_FAIL_COND_V_MSG(compute_list != nullptr, INVALID_ID, "Only one draw/compute list can be active at the same time.");
 
 	// Lock while compute_list is active.
@@ -7948,8 +8085,8 @@ void RenderingDeviceVulkan::compute_list_bind_uniform_set(ComputeListID p_list, 
 	{ // Validate that textures bound are not attached as framebuffer bindings.
 		uint32_t attachable_count = uniform_set->attachable_textures.size();
 		const RID *attachable_ptr = uniform_set->attachable_textures.ptr();
-		uint32_t bound_count = draw_list_bound_textures.size();
-		const RID *bound_ptr = draw_list_bound_textures.ptr();
+		uint32_t bound_count = draw_list->bound_textures.size();
+		const RID *bound_ptr = draw_list->bound_textures.ptr();
 		for (uint32_t i = 0; i < attachable_count; i++) {
 			for (uint32_t j = 0; j < bound_count; j++) {
 				ERR_FAIL_COND_MSG(attachable_ptr[i] == bound_ptr[j],
@@ -8299,18 +8436,18 @@ void RenderingDeviceVulkan::draw_list_render_secondary_to_framebuffer(ID p_frame
 		uint32_t command_buffer_count = 0;
 
 		for (uint32_t i = 0; i < p_draw_list_count; i++) {
-			DrawList *dl = _get_draw_list_ptr(p_draw_lists[i]);
-			ERR_CONTINUE_MSG(!dl, "Draw list index (" + itos(i) + ") is not a valid draw list ID.");
-			ERR_CONTINUE_MSG(dl->validation.framebuffer_format != p_format_check,
+			DrawList *draw_list = _get_draw_list_ptr(p_draw_lists[i]);
+			ERR_CONTINUE_MSG(!draw_list, "Draw list index (" + itos(i) + ") is not a valid draw list ID.");
+			ERR_CONTINUE_MSG(draw_list->validation.framebuffer_format != p_format_check,
 					"Draw list index (" + itos(i) + ") is created with a framebuffer format incompatible with this render pass.");
 
-			if (dl->validation.active) {
+			if (draw_list->validation.active) {
 				// Needs to be closed, so close it.
-				vkEndCommandBuffer(dl->command_buffer);
-				dl->validation.active = false;
+				vkEndCommandBuffer(draw_list->command_buffer);
+				draw_list->validation.active = false;
 			}
 
-			command_buffers[command_buffer_count++] = dl->command_buffer;
+			command_buffers[command_buffer_count++] = draw_list->command_buffer;
 		}
 
 		print_line("to draw: " + itos(command_buffer_count));
@@ -8508,6 +8645,7 @@ String RenderingDeviceVulkan::get_device_pipeline_cache_uuid() const {
 }
 
 void RenderingDeviceVulkan::_finalize_command_bufers() {
+	DrawList *draw_list = _get_current_draw_list();
 	if (draw_list) {
 		ERR_PRINT("Found open draw list at the end of the frame, this should never happen (further drawing will likely not work).");
 	}
@@ -8969,10 +9107,6 @@ void RenderingDeviceVulkan::initialize(VulkanContext *p_context, bool p_local_de
 	// Check to make sure DescriptorPoolKey is good.
 	static_assert(sizeof(uint64_t) * 3 >= UNIFORM_TYPE_MAX * sizeof(uint16_t));
 
-	draw_list = nullptr;
-	draw_list_count = 0;
-	draw_list_split = false;
-
 	compute_list = nullptr;
 	_load_pipeline_cache();
 	print_verbose(vformat("Startup PSO cache (%.1f MiB)", pipelines_cache.buffer.size() / (1024.0f * 1024.0f)));
@@ -9120,7 +9254,7 @@ void RenderingDeviceVulkan::_free_rids(T &p_owner, const char *p_type) {
 }
 
 void RenderingDeviceVulkan::capture_timestamp(const String &p_name) {
-	ERR_FAIL_COND_MSG(draw_list != nullptr, "Capturing timestamps during draw list creation is not allowed. Offending timestamp was: " + p_name);
+	//	ERR_FAIL_COND_MSG(draw_list != nullptr, "Capturing timestamps during draw list creation is not allowed. Offending timestamp was: " + p_name);
 	ERR_FAIL_COND(frames[frame].timestamp_count >= max_timestamp_query_elements);
 
 	// This should be optional for profiling, else it will slow things down.
@@ -9474,10 +9608,6 @@ void RenderingDeviceVulkan::finalize() {
 	_update_pipeline_cache(true);
 
 	vkDestroyPipelineCache(device, pipelines_cache.cache_object, nullptr);
-
-	for (int i = 0; i < split_draw_list_allocators.size(); i++) {
-		vkDestroyCommandPool(device, split_draw_list_allocators[i].command_pool, nullptr);
-	}
 
 	frames.clear();
 

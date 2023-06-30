@@ -845,17 +845,38 @@ class RenderingDeviceVulkan : public RenderingDevice {
 	// buffers. As they can be created in threads,
 	// each needs its own command pool.
 
-	struct SplitDrawListAllocator {
-		VkCommandPool command_pool = VK_NULL_HANDLE;
-		Vector<VkCommandBuffer> command_buffers; // One for each frame.
+	struct DrawList;
+	struct ThreadCommandPool {
+		TightLocalVector<VkCommandPool> frame_pools; // one pool per frame, so we can fire and forget command buffers to it
+		VkCommandPool compute_pool = VK_NULL_HANDLE; // this is independent of frames, in case of long running loosely coupled compute tasks
+		DrawList *current_draw_list = NULL; // one draw list working per thread
 	};
 
-	Vector<SplitDrawListAllocator> split_draw_list_allocators;
+	HashMap<Thread::ID, ThreadCommandPool> thread_command_pools;
+	const Error _get_thread_command_pool(ThreadCommandPool &pool);
+	// allocate command buffers for current frame/thread
+	VkCommandBuffer _allocate_command_buffer_for_drawing();
+	VkCommandBuffer _allocate_command_buffer_for_secondary();
+	VkCommandBuffer _allocate_command_buffer_for_compute();
+	DrawList *_get_current_draw_list();
+	void _set_current_draw_list(DrawList *draw_list);
 
 	struct DrawList {
+		DrawListID id;
+		Thread::ID owner_thread;
 		VkCommandBuffer command_buffer = VK_NULL_HANDLE; // If persistent, this is owned, otherwise it's shared with the ringbuffer.
 		Rect2i viewport;
 		bool viewport_set = false;
+		VkFramebuffer framebuffer;
+		VkRenderPass render_pass;
+
+		uint32_t split_count = 0;
+		DrawList *split_owner = NULL;
+		Vector<RID> bound_textures;
+		Vector<RID> storage_textures;
+		bool unbind_color_textures = false;
+		bool unbind_depth_textures = false;
+		uint32_t subpass_count = 0;
 
 		struct SetState {
 			uint32_t pipeline_expected_format = 0;
@@ -874,6 +895,8 @@ class RenderingDeviceVulkan : public RenderingDevice {
 			RID vertex_array;
 			RID index_array;
 			uint32_t pipeline_push_constant_stages = 0;
+			uint32_t current_subpass = 0;
+
 		} state;
 
 #ifdef DEBUG_ENABLED
@@ -911,29 +934,22 @@ class RenderingDeviceVulkan : public RenderingDevice {
 #endif
 	};
 
-	DrawList *draw_list = nullptr; // One for regular draw lists, multiple for split.
-	uint32_t draw_list_subpass_count = 0;
-	uint32_t draw_list_count = 0;
-	VkRenderPass draw_list_render_pass = VK_NULL_HANDLE;
-	VkFramebuffer draw_list_vkframebuffer = VK_NULL_HANDLE;
+	volatile DrawListID draw_list_next_id = 0;
+	HashMap<DrawListID, DrawList *> draw_lists;
+
 #ifdef DEBUG_ENABLED
 	FramebufferFormatID draw_list_framebuffer_format = INVALID_ID;
 #endif
 	uint32_t draw_list_current_subpass = 0;
 
-	bool draw_list_split = false;
-	Vector<RID> draw_list_bound_textures;
-	Vector<RID> draw_list_storage_textures;
-	bool draw_list_unbind_color_textures = false;
-	bool draw_list_unbind_depth_textures = false;
-
 	void _draw_list_insert_clear_region(DrawList *p_draw_list, Framebuffer *p_framebuffer, Point2i p_viewport_offset, Point2i p_viewport_size, bool p_clear_color, const Vector<Color> &p_clear_colors, bool p_clear_depth, float p_depth, uint32_t p_stencil);
 	Error _draw_list_setup_framebuffer(Framebuffer *p_framebuffer, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, VkFramebuffer *r_framebuffer, VkRenderPass *r_render_pass, uint32_t *r_subpass_count);
-	Error _draw_list_render_pass_begin(Framebuffer *framebuffer, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, const Vector<Color> &p_clear_colors, float p_clear_depth, uint32_t p_clear_stencil, Point2i viewport_offset, Point2i viewport_size, VkFramebuffer vkframebuffer, VkRenderPass render_pass, VkCommandBuffer command_buffer, VkSubpassContents subpass_contents, const Vector<RID> &p_storage_textures);
+	Error _draw_list_render_pass_begin(DrawList *p_draw_list, Framebuffer *framebuffer, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, const Vector<Color> &p_clear_colors, float p_clear_depth, uint32_t p_clear_stencil, Point2i viewport_offset, Point2i viewport_size, VkFramebuffer vkframebuffer, VkRenderPass render_pass, VkCommandBuffer command_buffer, VkSubpassContents subpass_contents, const Vector<RID> &p_storage_textures);
 	_FORCE_INLINE_ DrawList *_get_draw_list_ptr(DrawListID p_id);
 	Buffer *_get_buffer_from_owner(RID p_buffer, VkPipelineStageFlags &dst_stage_mask, VkAccessFlags &dst_access, BitField<BarrierMask> p_post_barrier);
-	Error _draw_list_allocate(const Rect2i &p_viewport, uint32_t p_splits, uint32_t p_subpass);
-	void _draw_list_free(Rect2i *r_last_viewport = nullptr);
+	Error _draw_list_allocate(const Rect2i &p_viewport, uint32_t p_splits, uint32_t p_subpass, VkRenderPass render_pass, VkFramebuffer framebuffer, DrawList **p_draw_list);
+	void _draw_list_free(DrawList *dl);
+	void _draw_list_push_split_commands(DrawList *dl, Rect2i *r_last_viewport = nullptr);
 
 	/**********************/
 	/**** COMPUTE LIST ****/
