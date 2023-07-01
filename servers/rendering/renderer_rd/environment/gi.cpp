@@ -1789,7 +1789,7 @@ void GI::SDFGI::debug_probes(RID p_framebuffer, const uint32_t p_view_count, con
 	}
 
 	RD::get_singleton()->draw_command_end_label();
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void GI::SDFGI::pre_process_gi(const Transform3D &p_transform, RenderDataRD *p_render_data) {

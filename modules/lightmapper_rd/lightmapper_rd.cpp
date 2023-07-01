@@ -604,7 +604,7 @@ void LightmapperRD::_raster_geometry(RenderingDevice *rd, Size2i atlas_size, int
 		rd->draw_list_set_push_constant(draw_list, &raster_push_constant, sizeof(RasterPushConstant));
 		rd->draw_list_draw(draw_list, false, 1, slice_triangle_count[i] * 3);
 
-		rd->draw_list_end();
+		rd->draw_list_end(draw_list);
 
 		triangle_offset += slice_triangle_count[i];
 	}
@@ -1610,7 +1610,7 @@ LightmapperRD::BakeError LightmapperRD::bake(BakeQuality p_quality, bool p_use_d
 					rd->draw_list_set_push_constant(draw_list, &seams_push_constant, sizeof(RasterSeamsPushConstant));
 					rd->draw_list_draw(draw_list, false, 1, slice_seam_count[i] * 4);
 				}
-				rd->draw_list_end();
+				rd->draw_list_end(draw_list);
 			}
 			seam_offset += slice_seam_count[i];
 			triangle_offset += slice_triangle_count[i];

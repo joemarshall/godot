@@ -603,8 +603,8 @@ void RenderForwardMobile::_pre_opaque_render(RenderDataRD *p_render_data) {
 		if (p_render_data->directional_shadows.size()) {
 			//open the pass for directional shadows
 			light_storage->update_directional_shadow_atlas();
-			RD::get_singleton()->draw_list_begin(light_storage->direction_shadow_get_fb(), RD::INITIAL_ACTION_DROP, RD::FINAL_ACTION_DISCARD, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_CONTINUE);
-			RD::get_singleton()->draw_list_end();
+			RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(light_storage->direction_shadow_get_fb(), RD::INITIAL_ACTION_DROP, RD::FINAL_ACTION_DISCARD, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_CONTINUE);			
+			RD::get_singleton()->draw_list_end(draw_list);
 		}
 	}
 
@@ -929,6 +929,8 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 		bool can_continue_color = !using_subpass_transparent && !scene_state.used_screen_texture;
 		bool can_continue_depth = !using_subpass_transparent && !scene_state.used_depth_texture;
 
+		RD::DrawListID draw_list = 0;
+
 		{
 			// regular forward for now
 			Vector<Color> c;
@@ -950,13 +952,13 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 				//multi threaded
 				thread_draw_lists.resize(WorkerThreadPool::get_singleton()->get_thread_count());
 				RD::get_singleton()->draw_list_begin_split(framebuffer, thread_draw_lists.size(), thread_draw_lists.ptr(), keep_color ? RD::INITIAL_ACTION_KEEP : RD::INITIAL_ACTION_CLEAR, can_continue_color ? RD::FINAL_ACTION_CONTINUE : RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CLEAR, can_continue_depth ? RD::FINAL_ACTION_CONTINUE : RD::FINAL_ACTION_READ, c, 1.0, 0);
-
+				draw_list = RD::get_singleton()->draw_list_get_parent(thread_draw_lists[0]);
 				WorkerThreadPool::GroupID group_task = WorkerThreadPool::get_singleton()->add_template_group_task(this, &RenderForwardMobile::_render_list_thread_function, &render_list_params, thread_draw_lists.size(), -1, true, SNAME("ForwardMobileRenderList"));
 				WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group_task);
 
 			} else {
 				//single threaded
-				RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(framebuffer, keep_color ? RD::INITIAL_ACTION_KEEP : RD::INITIAL_ACTION_CLEAR, can_continue_color ? RD::FINAL_ACTION_CONTINUE : RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CLEAR, can_continue_depth ? RD::FINAL_ACTION_CONTINUE : RD::FINAL_ACTION_READ, c, 1.0, 0);
+				draw_list = RD::get_singleton()->draw_list_begin(framebuffer, keep_color ? RD::INITIAL_ACTION_KEEP : RD::INITIAL_ACTION_CLEAR, can_continue_color ? RD::FINAL_ACTION_CONTINUE : RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CLEAR, can_continue_depth ? RD::FINAL_ACTION_CONTINUE : RD::FINAL_ACTION_READ, c, 1.0, 0);
 				_render_list(draw_list, fb_format, &render_list_params, 0, render_list_params.element_count);
 			}
 		}
@@ -968,7 +970,7 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 
 			// Note, sky.setup should have been called up above and setup stuff we need.
 
-			RD::DrawListID draw_list = RD::get_singleton()->draw_list_switch_to_next_pass();
+			RD::get_singleton()->draw_list_switch_to_next_pass(draw_list);
 
 			sky.draw_sky(draw_list, rb, p_render_data->environment, framebuffer, time, sky_energy_multiplier);
 
@@ -977,12 +979,12 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 			// note, if MSAA is used in 2-subpass approach we should get an automatic resolve here
 		} else {
 			// switch to subpass but we do nothing here so basically we skip (though this should trigger resolve with 2-subpass MSAA).
-			RD::get_singleton()->draw_list_switch_to_next_pass();
+			RD::get_singleton()->draw_list_switch_to_next_pass(draw_list);
 		}
 
 		if (!using_subpass_transparent) {
 			// We're done with our subpasses so end our container pass
-			RD::get_singleton()->draw_list_end(RD::BARRIER_MASK_ALL_BARRIERS);
+			RD::get_singleton()->draw_list_end(draw_list,RD::BARRIER_MASK_ALL_BARRIERS);
 
 			RD::get_singleton()->draw_command_end_label(); // Render 3D Pass / Render Reflection Probe Pass
 		}
@@ -1011,15 +1013,15 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 				// secondary command buffers need more testing at this time
 				//multi threaded
 				thread_draw_lists.resize(WorkerThreadPool::get_singleton()->get_thread_count());
-				RD::get_singleton()->draw_list_switch_to_next_pass_split(thread_draw_lists.size(), thread_draw_lists.ptr());
-				render_list_params.subpass = RD::get_singleton()->draw_list_get_current_pass();
+				RD::get_singleton()->draw_list_switch_to_next_pass_split(draw_list,thread_draw_lists.size(), thread_draw_lists.ptr());
+				render_list_params.subpass = RD::get_singleton()->draw_list_get_current_pass(draw_list);
 				WorkerThreadPool::GroupID group_task = WorkerThreadPool::get_singleton()->add_template_group_task(this, &RenderForwardMobile::_render_list_thread_function, &render_list_params, thread_draw_lists.size(), -1, true, SNAME("ForwardMobileRenderSubpass"));
 				WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group_task);
 
 			} else {
 				//single threaded
-				RD::DrawListID draw_list = RD::get_singleton()->draw_list_switch_to_next_pass();
-				render_list_params.subpass = RD::get_singleton()->draw_list_get_current_pass();
+				draw_list = RD::get_singleton()->draw_list_switch_to_next_pass(draw_list);
+				render_list_params.subpass = RD::get_singleton()->draw_list_get_current_pass(draw_list);
 				_render_list(draw_list, fb_format, &render_list_params, 0, render_list_params.element_count);
 			}
 
@@ -1029,12 +1031,12 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 
 			// blit to tonemap
 			if (rb_data.is_valid() && using_subpass_post_process) {
-				_post_process_subpass(p_render_data->render_buffers->get_internal_texture(), framebuffer, p_render_data);
+				_post_process_subpass(draw_list,p_render_data->render_buffers->get_internal_texture(), framebuffer, p_render_data);
 			}
 
 			RD::get_singleton()->draw_command_end_label(); // Render 3D Pass / Render Reflection Probe Pass
 
-			RD::get_singleton()->draw_list_end(RD::BARRIER_MASK_ALL_BARRIERS);
+			RD::get_singleton()->draw_list_end(draw_list,RD::BARRIER_MASK_ALL_BARRIERS);
 		} else {
 			RENDER_TIMESTAMP("Render Transparent");
 
@@ -1053,15 +1055,16 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 				//multi threaded
 				thread_draw_lists.resize(WorkerThreadPool::get_singleton()->get_thread_count());
 				RD::get_singleton()->draw_list_begin_split(framebuffer, thread_draw_lists.size(), thread_draw_lists.ptr(), can_continue_color ? RD::INITIAL_ACTION_CONTINUE : RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ, can_continue_depth ? RD::INITIAL_ACTION_CONTINUE : RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ);
+				draw_list = RD::get_singleton()->draw_list_get_parent(thread_draw_lists[0]);
 				WorkerThreadPool::GroupID group_task = WorkerThreadPool::get_singleton()->add_template_group_task(this, &RenderForwardMobile::_render_list_thread_function, &render_list_params, thread_draw_lists.size(), -1, true, SNAME("ForwardMobileRenderSubpass"));
 				WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group_task);
 
-				RD::get_singleton()->draw_list_end(RD::BARRIER_MASK_ALL_BARRIERS);
+				RD::get_singleton()->draw_list_end(draw_list,RD::BARRIER_MASK_ALL_BARRIERS);
 			} else {
 				//single threaded
-				RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(framebuffer, can_continue_color ? RD::INITIAL_ACTION_CONTINUE : RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ, can_continue_depth ? RD::INITIAL_ACTION_CONTINUE : RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ);
+				draw_list = RD::get_singleton()->draw_list_begin(framebuffer, can_continue_color ? RD::INITIAL_ACTION_CONTINUE : RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ, can_continue_depth ? RD::INITIAL_ACTION_CONTINUE : RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ);
 				_render_list(draw_list, fb_format, &render_list_params, 0, render_list_params.element_count);
-				RD::get_singleton()->draw_list_end(RD::BARRIER_MASK_ALL_BARRIERS);
+				RD::get_singleton()->draw_list_end(draw_list,RD::BARRIER_MASK_ALL_BARRIERS);
 			}
 
 			RD::get_singleton()->draw_command_end_label(); // Render Transparent Subpass
@@ -1414,7 +1417,7 @@ void RenderForwardMobile::_render_material(const Transform3D &p_cam_transform, c
 		};
 		RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(p_framebuffer, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, clear, 1.0, 0, p_region);
 		_render_list(draw_list, RD::get_singleton()->framebuffer_get_format(p_framebuffer), &render_list_params, 0, render_list_params.element_count);
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 	}
 
 	RD::get_singleton()->draw_command_end_label();
@@ -1484,7 +1487,7 @@ void RenderForwardMobile::_render_uv2(const PagedArray<RenderGeometryInstance *>
 		render_list_params.uv_offset = Vector2();
 		_render_list(draw_list, RD::get_singleton()->framebuffer_get_format(p_framebuffer), &render_list_params, 0, render_list_params.element_count); //second regular triangles
 
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 	}
 
 	RD::get_singleton()->draw_command_end_label();
@@ -2010,15 +2013,15 @@ void RenderForwardMobile::_render_list_with_threads(RenderListParameters *p_para
 		//multi threaded
 		thread_draw_lists.resize(WorkerThreadPool::get_singleton()->get_thread_count());
 		RD::get_singleton()->draw_list_begin_split(p_framebuffer, thread_draw_lists.size(), thread_draw_lists.ptr(), p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, p_clear_color_values, p_clear_depth, p_clear_stencil, p_region, p_storage_textures);
+		RD::DrawListID draw_list = RD::get_singleton()->draw_list_get_parent(thread_draw_lists[0]);
 		WorkerThreadPool::GroupID group_task = WorkerThreadPool::get_singleton()->add_template_group_task(this, &RenderForwardMobile::_render_list_thread_function, p_params, thread_draw_lists.size(), -1, true, SNAME("ForwardMobileRenderSubpass"));
 		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group_task);
-
-		RD::get_singleton()->draw_list_end(p_params->barrier);
+		RD::get_singleton()->draw_list_end(draw_list,p_params->barrier);
 	} else {
 		//single threaded
 		RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(p_framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, p_clear_color_values, p_clear_depth, p_clear_stencil, p_region, p_storage_textures);
 		_render_list(draw_list, fb_format, p_params, 0, p_params->element_count);
-		RD::get_singleton()->draw_list_end(p_params->barrier);
+		RD::get_singleton()->draw_list_end(draw_list,p_params->barrier);
 	}
 }
 

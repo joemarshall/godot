@@ -232,7 +232,7 @@ void SkyRD::_render_sky(RD::DrawListID p_list, float p_time, RID p_fb, PipelineC
 
 	RD::DrawListID draw_list = p_list;
 
-	RD::get_singleton()->draw_list_bind_render_pipeline(draw_list, p_pipeline->get_render_pipeline(RD::INVALID_ID, fb_format, false, RD::get_singleton()->draw_list_get_current_pass()));
+	RD::get_singleton()->draw_list_bind_render_pipeline(draw_list, p_pipeline->get_render_pipeline(RD::INVALID_ID, fb_format, false, RD::get_singleton()->draw_list_get_current_pass(draw_list)));
 
 	// Update uniform sets.
 	{
@@ -1343,7 +1343,7 @@ void SkyRD::update_radiance_buffers(Ref<RenderSceneBuffersRD> p_render_buffers, 
 
 				cubemap_draw_list = RD::get_singleton()->draw_list_begin(sky->reflection.layers[0].mipmaps[2].framebuffers[i], RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_DISCARD);
 				_render_sky(cubemap_draw_list, p_time, sky->reflection.layers[0].mipmaps[2].framebuffers[i], pipeline, material->uniform_set, texture_uniform_set, cm, local_view, p_global_pos, p_luminance_multiplier);
-				RD::get_singleton()->draw_list_end();
+				RD::get_singleton()->draw_list_end(cubemap_draw_list);
 			}
 			RD::get_singleton()->draw_command_end_label();
 		} else if (shader_data->uses_quarter_res && roughness_layers < 3) {
@@ -1364,7 +1364,7 @@ void SkyRD::update_radiance_buffers(Ref<RenderSceneBuffersRD> p_render_buffers, 
 
 				cubemap_draw_list = RD::get_singleton()->draw_list_begin(sky->reflection.layers[0].mipmaps[1].framebuffers[i], RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_DISCARD);
 				_render_sky(cubemap_draw_list, p_time, sky->reflection.layers[0].mipmaps[1].framebuffers[i], pipeline, material->uniform_set, texture_uniform_set, cm, local_view, p_global_pos, p_luminance_multiplier);
-				RD::get_singleton()->draw_list_end();
+				RD::get_singleton()->draw_list_end(cubemap_draw_list);
 			}
 			RD::get_singleton()->draw_command_end_label();
 		} else if (shader_data->uses_half_res && roughness_layers < 2) {
@@ -1381,7 +1381,7 @@ void SkyRD::update_radiance_buffers(Ref<RenderSceneBuffersRD> p_render_buffers, 
 
 			cubemap_draw_list = RD::get_singleton()->draw_list_begin(sky->reflection.layers[0].mipmaps[0].framebuffers[i], RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_DISCARD);
 			_render_sky(cubemap_draw_list, p_time, sky->reflection.layers[0].mipmaps[0].framebuffers[i], pipeline, material->uniform_set, texture_uniform_set, cm, local_view, p_global_pos, p_luminance_multiplier);
-			RD::get_singleton()->draw_list_end();
+			RD::get_singleton()->draw_list_end(cubemap_draw_list);
 		}
 		RD::get_singleton()->draw_command_end_label();
 
@@ -1505,7 +1505,7 @@ void SkyRD::update_res_buffers(Ref<RenderSceneBuffersRD> p_render_buffers, RID p
 
 		RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(framebuffer, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_DISCARD, clear_colors);
 		_render_sky(draw_list, p_time, framebuffer, pipeline, material->uniform_set, texture_uniform_set, projection, sky_transform, sky_scene_state.cam_transform.origin, p_luminance_multiplier);
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 	}
 
 	if (shader_data->uses_half_res) {
@@ -1524,7 +1524,7 @@ void SkyRD::update_res_buffers(Ref<RenderSceneBuffersRD> p_render_buffers, RID p
 
 		RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(framebuffer, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_DISCARD, clear_colors);
 		_render_sky(draw_list, p_time, framebuffer, pipeline, material->uniform_set, texture_uniform_set, projection, sky_transform, sky_scene_state.cam_transform.origin, p_luminance_multiplier);
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 	}
 
 	RD::get_singleton()->draw_command_end_label(); // Setup Sky resolution buffers

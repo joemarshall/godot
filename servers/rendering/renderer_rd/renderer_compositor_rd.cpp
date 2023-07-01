@@ -86,7 +86,7 @@ void RendererCompositorRD::blit_render_targets_to_screen(DisplayServer::WindowID
 		RD::get_singleton()->draw_list_draw(draw_list, true);
 	}
 
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void RendererCompositorRD::begin_frame(double frame_step) {
@@ -241,7 +241,7 @@ void RendererCompositorRD::set_boot_image(const Ref<Image> &p_image, const Color
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &blit.push_constant, sizeof(BlitPushConstant));
 	RD::get_singleton()->draw_list_draw(draw_list, true);
 
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 
 	RD::get_singleton()->swap_buffers();
 

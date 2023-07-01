@@ -196,7 +196,7 @@ void Luminance::luminance_reduction(RID p_source_texture, const Size2i p_source_
 			RD::get_singleton()->draw_list_set_push_constant(draw_list, &push_constant, sizeof(LuminanceReduceRasterPushConstant));
 
 			RD::get_singleton()->draw_list_draw(draw_list, true);
-			RD::get_singleton()->draw_list_end();
+			RD::get_singleton()->draw_list_end(draw_list);
 		}
 	} else {
 		LuminanceReducePushConstant push_constant;

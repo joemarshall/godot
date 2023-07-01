@@ -487,7 +487,7 @@ void ClusterBuilderRD::bake_cluster() {
 				RD::get_singleton()->draw_list_draw(draw_list, true, instances);
 				i += instances;
 			}
-			RD::get_singleton()->draw_list_end(RD::BARRIER_MASK_COMPUTE);
+			RD::get_singleton()->draw_list_end(draw_list,RD::BARRIER_MASK_COMPUTE);
 		}
 		// Store elements.
 		RENDER_TIMESTAMP("Pack 3D Cluster Elements");

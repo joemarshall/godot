@@ -596,7 +596,7 @@ void CopyEffects::copy_to_fb_rect(RID p_source_rd_texture, RID p_dest_framebuffe
 	RD::get_singleton()->draw_list_bind_index_array(draw_list, material_storage->get_quad_index_array());
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &copy_to_fb.push_constant, sizeof(CopyToFbPushConstant));
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::copy_raster(RID p_source_texture, RID p_dest_framebuffer) {
@@ -625,7 +625,7 @@ void CopyEffects::copy_raster(RID p_source_texture, RID p_dest_framebuffer) {
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &blur_raster.push_constant, sizeof(BlurRasterPushConstant));
 
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::gaussian_blur(RID p_source_rd_texture, RID p_texture, const Rect2i &p_region, const Size2i &p_size, bool p_8bit_dst) {
@@ -701,7 +701,7 @@ void CopyEffects::gaussian_blur_raster(RID p_source_rd_texture, RID p_dest_textu
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &blur_raster.push_constant, sizeof(BlurRasterPushConstant));
 
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::gaussian_glow(RID p_source_rd_texture, RID p_back_texture, const Size2i &p_size, float p_strength, bool p_first_pass, float p_luminance_cap, float p_exposure, float p_bloom, float p_hdr_bleed_threshold, float p_hdr_bleed_scale, RID p_auto_exposure, float p_auto_exposure_scale) {
@@ -809,7 +809,7 @@ void CopyEffects::gaussian_glow_raster(RID p_source_rd_texture, RID p_half_textu
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &blur_raster.push_constant, sizeof(BlurRasterPushConstant));
 
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 
 	blur_mode = BLUR_MODE_GAUSSIAN_GLOW;
 
@@ -826,7 +826,7 @@ void CopyEffects::gaussian_glow_raster(RID p_source_rd_texture, RID p_half_textu
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &blur_raster.push_constant, sizeof(BlurRasterPushConstant));
 
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::make_mipmap(RID p_source_rd_texture, RID p_dest_texture, const Size2i &p_size) {
@@ -895,7 +895,7 @@ void CopyEffects::make_mipmap_raster(RID p_source_rd_texture, RID p_dest_texture
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &blur_raster.push_constant, sizeof(BlurRasterPushConstant));
 
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::set_color(RID p_dest_texture, const Color &p_color, const Rect2i &p_region, bool p_8bit_dst) {
@@ -959,7 +959,7 @@ void CopyEffects::set_color_raster(RID p_dest_texture, const Color &p_color, con
 	RD::get_singleton()->draw_list_bind_index_array(draw_list, material_storage->get_quad_index_array());
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &copy_to_fb.push_constant, sizeof(CopyToFbPushConstant));
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::copy_cubemap_to_dp(RID p_source_rd_texture, RID p_dst_framebuffer, const Rect2 &p_rect, const Vector2 &p_dst_size, float p_z_near, float p_z_far, bool p_dp_flip) {
@@ -994,7 +994,7 @@ void CopyEffects::copy_cubemap_to_dp(RID p_source_rd_texture, RID p_dst_framebuf
 
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &push_constant, sizeof(CopyToDPPushConstant));
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end(RD::BARRIER_MASK_RASTER | RD::BARRIER_MASK_TRANSFER);
+	RD::get_singleton()->draw_list_end(draw_list,RD::BARRIER_MASK_RASTER | RD::BARRIER_MASK_TRANSFER);
 }
 
 void CopyEffects::cubemap_downsample(RID p_source_cubemap, RID p_dest_cubemap, const Size2i &p_size) {
@@ -1060,7 +1060,7 @@ void CopyEffects::cubemap_downsample_raster(RID p_source_cubemap, RID p_dest_fra
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &cubemap_downsampler.push_constant, sizeof(CubemapDownsamplerPushConstant));
 
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::cubemap_filter(RID p_source_cubemap, Vector<RID> p_dest_cubemap, bool p_use_array) {
@@ -1141,7 +1141,7 @@ void CopyEffects::cubemap_filter_raster(RID p_source_cubemap, RID p_dest_framebu
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &push_constant, sizeof(CubemapFilterRasterPushConstant));
 
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::cubemap_roughness(RID p_source_rd_texture, RID p_dest_texture, uint32_t p_face_id, uint32_t p_sample_count, float p_roughness, float p_size) {
@@ -1219,7 +1219,7 @@ void CopyEffects::cubemap_roughness_raster(RID p_source_rd_texture, RID p_dest_f
 	RD::get_singleton()->draw_list_set_push_constant(draw_list, &roughness.push_constant, sizeof(CubemapRoughnessPushConstant));
 
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void CopyEffects::merge_specular(RID p_dest_framebuffer, RID p_specular, RID p_base, RID p_reflection, uint32_t p_view_count) {
@@ -1271,7 +1271,7 @@ void CopyEffects::merge_specular(RID p_dest_framebuffer, RID p_specular, RID p_b
 
 	RD::get_singleton()->draw_list_bind_index_array(draw_list, material_storage->get_quad_index_array());
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 
 	RD::get_singleton()->draw_command_end_label();
 }

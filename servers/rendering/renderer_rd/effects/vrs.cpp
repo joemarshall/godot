@@ -88,7 +88,7 @@ void VRS::copy_vrs(RID p_source_rd_texture, RID p_dest_framebuffer, bool p_multi
 	RD::get_singleton()->draw_list_bind_index_array(draw_list, material_storage->get_quad_index_array());
 	// RD::get_singleton()->draw_list_set_push_constant(draw_list, &vrs_shader.push_constant, sizeof(VRSPushConstant));
 	RD::get_singleton()->draw_list_draw(draw_list, true);
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 Size2i VRS::get_vrs_texture_size(const Size2i p_base_size) const {

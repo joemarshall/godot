@@ -586,7 +586,7 @@ void RendererSceneRenderRD::_render_buffers_post_process_and_tonemap(const Rende
 	texture_storage->render_target_disable_clear_request(render_target);
 }
 
-void RendererSceneRenderRD::_post_process_subpass(RID p_source_texture, RID p_framebuffer, const RenderDataRD *p_render_data) {
+void RendererSceneRenderRD::_post_process_subpass(RD::DrawListID draw_list,RID p_source_texture, RID p_framebuffer, const RenderDataRD *p_render_data) {
 	RendererRD::TextureStorage *texture_storage = RendererRD::TextureStorage::get_singleton();
 	RD::get_singleton()->draw_command_begin_label("Post Process Subpass");
 
@@ -598,7 +598,7 @@ void RendererSceneRenderRD::_post_process_subpass(RID p_source_texture, RID p_fr
 	Size2i target_size = rb->get_target_size();
 	bool can_use_effects = target_size.x >= 8 && target_size.y >= 8;
 
-	RD::DrawListID draw_list = RD::get_singleton()->draw_list_switch_to_next_pass();
+	RD::get_singleton()->draw_list_switch_to_next_pass(draw_list);
 
 	RendererRD::ToneMapper::TonemapSettings tonemap;
 

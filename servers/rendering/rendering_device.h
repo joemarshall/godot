@@ -1173,11 +1173,11 @@ public:
 	virtual void draw_list_enable_scissor(DrawListID p_list, const Rect2 &p_rect) = 0;
 	virtual void draw_list_disable_scissor(DrawListID p_list) = 0;
 
-	virtual uint32_t draw_list_get_current_pass() = 0;
-	virtual DrawListID draw_list_switch_to_next_pass() = 0;
-	virtual Error draw_list_switch_to_next_pass_split(uint32_t p_splits, DrawListID *r_split_ids) = 0;
-
-	virtual void draw_list_end(BitField<BarrierMask> p_post_barrier = BARRIER_MASK_ALL_BARRIERS) = 0;
+	virtual uint32_t draw_list_get_current_pass(DrawListID p_list) = 0;
+	virtual DrawListID draw_list_switch_to_next_pass(DrawListID p_list) = 0;
+	virtual Error draw_list_switch_to_next_pass_split(DrawListID p_list, uint32_t p_splits, DrawListID *r_split_ids) = 0;
+	virtual DrawListID draw_list_get_parent(DrawListID p_split_child_draw_list)=0;
+	virtual void draw_list_end(DrawListID p_list,BitField<BarrierMask> p_post_barrier = BARRIER_MASK_ALL_BARRIERS) = 0;
 
 	/***********************/
 	/**** COMPUTE LISTS ****/
@@ -1337,7 +1337,7 @@ protected:
 	Vector<int64_t> _draw_list_begin_split(RID p_framebuffer, uint32_t p_splits, InitialAction p_initial_color_action, FinalAction p_final_color_action, InitialAction p_initial_depth_action, FinalAction p_final_depth_action, const Vector<Color> &p_clear_color_values = Vector<Color>(), float p_clear_depth = 1.0, uint32_t p_clear_stencil = 0, const Rect2 &p_region = Rect2(), const TypedArray<RID> &p_storage_textures = TypedArray<RID>());
 	void _draw_list_set_push_constant(DrawListID p_list, const Vector<uint8_t> &p_data, uint32_t p_data_size);
 	void _compute_list_set_push_constant(ComputeListID p_list, const Vector<uint8_t> &p_data, uint32_t p_data_size);
-	Vector<int64_t> _draw_list_switch_to_next_pass_split(uint32_t p_splits);
+	Vector<int64_t> _draw_list_switch_to_next_pass_split(DrawListID p_list,uint32_t p_splits);
 
 	struct SpirvReflectionData {
 		BitField<ShaderStage> stages_mask;

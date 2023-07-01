@@ -364,7 +364,7 @@ void BokehDOF::bokeh_dof_raster(const BokehBuffers &p_buffers, RID p_camera_attr
 			RD::get_singleton()->draw_list_set_push_constant(draw_list, &bokeh.push_constant, sizeof(BokehPushConstant));
 
 			RD::get_singleton()->draw_list_draw(draw_list, true);
-			RD::get_singleton()->draw_list_end();
+			RD::get_singleton()->draw_list_end(draw_list);
 		}
 
 		if (bokeh_shape == RS::DOF_BOKEH_BOX || bokeh_shape == RS::DOF_BOKEH_HEXAGON) {
@@ -398,7 +398,7 @@ void BokehDOF::bokeh_dof_raster(const BokehBuffers &p_buffers, RID p_camera_attr
 			RD::get_singleton()->draw_list_set_push_constant(draw_list, &bokeh.push_constant, sizeof(BokehPushConstant));
 
 			RD::get_singleton()->draw_list_draw(draw_list, true);
-			RD::get_singleton()->draw_list_end();
+			RD::get_singleton()->draw_list_end(draw_list);
 
 			// Pass 2
 			if (!bokeh.push_constant.half_size) {
@@ -423,7 +423,7 @@ void BokehDOF::bokeh_dof_raster(const BokehBuffers &p_buffers, RID p_camera_attr
 			RD::get_singleton()->draw_list_set_push_constant(draw_list, &bokeh.push_constant, sizeof(BokehPushConstant));
 
 			RD::get_singleton()->draw_list_draw(draw_list, true);
-			RD::get_singleton()->draw_list_end();
+			RD::get_singleton()->draw_list_end(draw_list);
 
 			if (bokeh.push_constant.half_size) {
 				// Compose pass
@@ -443,7 +443,7 @@ void BokehDOF::bokeh_dof_raster(const BokehBuffers &p_buffers, RID p_camera_attr
 				RD::get_singleton()->draw_list_set_push_constant(draw_list, &bokeh.push_constant, sizeof(BokehPushConstant));
 
 				RD::get_singleton()->draw_list_draw(draw_list, true);
-				RD::get_singleton()->draw_list_end();
+				RD::get_singleton()->draw_list_end(draw_list);
 			}
 
 		} else {
@@ -476,7 +476,7 @@ void BokehDOF::bokeh_dof_raster(const BokehBuffers &p_buffers, RID p_camera_attr
 			RD::get_singleton()->draw_list_set_push_constant(draw_list, &bokeh.push_constant, sizeof(BokehPushConstant));
 
 			RD::get_singleton()->draw_list_draw(draw_list, true);
-			RD::get_singleton()->draw_list_end();
+			RD::get_singleton()->draw_list_end(draw_list);
 
 			if (bokeh.push_constant.half_size) {
 				// Compose
@@ -496,7 +496,7 @@ void BokehDOF::bokeh_dof_raster(const BokehBuffers &p_buffers, RID p_camera_attr
 				RD::get_singleton()->draw_list_set_push_constant(draw_list, &bokeh.push_constant, sizeof(BokehPushConstant));
 
 				RD::get_singleton()->draw_list_draw(draw_list, true);
-				RD::get_singleton()->draw_list_end();
+				RD::get_singleton()->draw_list_end(draw_list);
 			} else {
 				CopyEffects::get_singleton()->copy_raster(p_buffers.secondary_texture, p_buffers.base_fb);
 			}

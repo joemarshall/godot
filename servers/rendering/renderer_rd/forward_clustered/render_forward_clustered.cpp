@@ -590,14 +590,15 @@ void RenderForwardClustered::_render_list_with_threads(RenderListParameters *p_p
 		//multi threaded
 		thread_draw_lists.resize(WorkerThreadPool::get_singleton()->get_thread_count());
 		RD::get_singleton()->draw_list_begin_split(p_framebuffer, thread_draw_lists.size(), thread_draw_lists.ptr(), p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, p_clear_color_values, p_clear_depth, p_clear_stencil, p_region, p_storage_textures);
+		RD::DrawListID draw_list = RD::get_singleton()->draw_list_get_parent(thread_draw_lists[0]);
 		WorkerThreadPool::GroupID group_task = WorkerThreadPool::get_singleton()->add_template_group_task(this, &RenderForwardClustered::_render_list_thread_function, p_params, thread_draw_lists.size(), -1, true, SNAME("ForwardClusteredRenderList"));
 		WorkerThreadPool::get_singleton()->wait_for_group_task_completion(group_task);
-		RD::get_singleton()->draw_list_end(p_params->barrier);
+		RD::get_singleton()->draw_list_end(draw_list,p_params->barrier);
 	} else {
 		//single threaded
 		RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(p_framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, p_clear_color_values, p_clear_depth, p_clear_stencil, p_region, p_storage_textures);
 		_render_list(draw_list, fb_format, p_params, 0, p_params->element_count);
-		RD::get_singleton()->draw_list_end(p_params->barrier);
+		RD::get_singleton()->draw_list_end(draw_list,p_params->barrier);
 	}
 }
 
@@ -1378,8 +1379,8 @@ void RenderForwardClustered::_pre_opaque_render(RenderDataRD *p_render_data, boo
 		if (p_render_data->directional_shadows.size()) {
 			//open the pass for directional shadows
 			light_storage->update_directional_shadow_atlas();
-			RD::get_singleton()->draw_list_begin(light_storage->direction_shadow_get_fb(), RD::INITIAL_ACTION_DROP, RD::FINAL_ACTION_DISCARD, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_CONTINUE);
-			RD::get_singleton()->draw_list_end();
+			RD::DrawListID draw_list=RD::get_singleton()->draw_list_begin(light_storage->direction_shadow_get_fb(), RD::INITIAL_ACTION_DROP, RD::FINAL_ACTION_DISCARD, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_CONTINUE);
+			RD::get_singleton()->draw_list_end(draw_list);
 		}
 	}
 
@@ -1848,8 +1849,8 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 		}
 		if (needs_pre_resolve) {
 			//pre clear the depth framebuffer, as AMD (and maybe others?) use compute for it, and barrier other compute shaders.
-			RD::get_singleton()->draw_list_begin(depth_framebuffer, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_CONTINUE, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_CONTINUE, depth_pass_clear);
-			RD::get_singleton()->draw_list_end();
+			RD::DrawListID draw_list=RD::get_singleton()->draw_list_begin(depth_framebuffer, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_CONTINUE, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_CONTINUE, depth_pass_clear);
+			RD::get_singleton()->draw_list_end(draw_list);
 			//start compute processes here, so they run at the same time as depth pre-pass
 			_post_prepass_render(p_render_data, using_sdfgi || using_voxelgi);
 		}
@@ -1933,8 +1934,8 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 		_render_list_with_threads(&render_list_params, color_framebuffer, keep_color ? RD::INITIAL_ACTION_KEEP : RD::INITIAL_ACTION_CLEAR, will_continue_color ? RD::FINAL_ACTION_CONTINUE : RD::FINAL_ACTION_READ, depth_pre_pass ? (continue_depth ? RD::INITIAL_ACTION_CONTINUE : RD::INITIAL_ACTION_KEEP) : RD::INITIAL_ACTION_CLEAR, will_continue_depth ? RD::FINAL_ACTION_CONTINUE : RD::FINAL_ACTION_READ, c, 1.0, 0);
 		if (will_continue_color && using_separate_specular) {
 			// close the specular framebuffer, as it's no longer used
-			RD::get_singleton()->draw_list_begin(rb_data->get_specular_only_fb(), RD::INITIAL_ACTION_CONTINUE, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CONTINUE, RD::FINAL_ACTION_CONTINUE);
-			RD::get_singleton()->draw_list_end();
+			RD::DrawListID draw_list=RD::get_singleton()->draw_list_begin(rb_data->get_specular_only_fb(), RD::INITIAL_ACTION_CONTINUE, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CONTINUE, RD::FINAL_ACTION_CONTINUE);
+			RD::get_singleton()->draw_list_end(draw_list);
 		}
 	}
 
@@ -1954,7 +1955,7 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 			gi.debug_voxel_gi((*p_render_data->voxel_gi_instances)[i], draw_list, color_only_framebuffer, cm, get_debug_draw_mode() == RS::VIEWPORT_DEBUG_DRAW_VOXEL_GI_LIGHTING, get_debug_draw_mode() == RS::VIEWPORT_DEBUG_DRAW_VOXEL_GI_EMISSION, 1.0);
 		}
 		RD::get_singleton()->draw_command_end_label();
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 	}
 
 	if (debug_sdfgi_probes) {
@@ -1979,7 +1980,7 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 
 		sky.draw_sky(draw_list, rb, p_render_data->environment, color_only_framebuffer, time, sky_energy_multiplier);
 
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 		RD::get_singleton()->draw_command_end_label();
 	}
 	if (rb->get_msaa_3d() != RS::VIEWPORT_MSAA_DISABLED) {
@@ -2519,7 +2520,7 @@ void RenderForwardClustered::_render_material(const Transform3D &p_cam_transform
 
 		RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(p_framebuffer, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, clear, 1.0, 0, p_region);
 		_render_list(draw_list, RD::get_singleton()->framebuffer_get_format(p_framebuffer), &render_list_params, 0, render_list_params.element_count);
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 	}
 
 	RD::get_singleton()->draw_command_end_label();
@@ -2592,7 +2593,7 @@ void RenderForwardClustered::_render_uv2(const PagedArray<RenderGeometryInstance
 		render_list_params.force_wireframe = false;
 		_render_list(draw_list, RD::get_singleton()->framebuffer_get_format(p_framebuffer), &render_list_params, 0, render_list_params.element_count); //second regular triangles
 
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 	}
 
 	RD::get_singleton()->draw_command_end_label();

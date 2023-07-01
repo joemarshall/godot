@@ -37,14 +37,20 @@
 #include "core/io/marshalls.h"
 #include "core/os/os.h"
 #include "core/os/thread.h"
+
 #include "core/templates/hashfuncs.h"
 #include "drivers/vulkan/vulkan_context.h"
 
+
 #include "thirdparty/misc/smolv.h"
+
+#include<atomic>
+
 
 //#define FORCE_FULL_BARRIER
 
 static const uint32_t SMALL_ALLOCATION_MAX_SIZE = 4096;
+static std::atomic<RenderingDevice::DrawListID> draw_list_next_id(1);
 
 // Get the Vulkan object information and possible stage access types (bitwise OR'd with incoming values).
 RenderingDeviceVulkan::Buffer *RenderingDeviceVulkan::_get_buffer_from_owner(RID p_buffer, VkPipelineStageFlags &r_stage_mask, VkAccessFlags &r_access_mask, BitField<BarrierMask> p_post_barrier) {
@@ -6648,7 +6654,7 @@ RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin_for_screen(Di
 	viewport.maxDepth = 1.0;
 
 	vkCmdSetViewport(command_buffer, 0, 1, &viewport);
-
+	printf("WOO: %f %f %f %f\n",viewport.x,viewport.y,viewport.width,viewport.height);
 	VkRect2D scissor;
 	scissor.offset.x = 0;
 	scissor.offset.y = 0;
@@ -6928,6 +6934,8 @@ RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_begin(RID p_framebu
 	Error err = _draw_list_setup_framebuffer(framebuffer, p_initial_color_action, p_final_color_action, p_initial_depth_action, p_final_depth_action, &vkframebuffer, &render_pass, &subpass_count);
 	ERR_FAIL_COND_V(err != OK, INVALID_ID);
 
+	printf("yay: %d %d %d %d\n", viewport_offset.x, viewport_offset.y, viewport_size.x, viewport_size.y);
+
 	DrawList *draw_list;
 	_draw_list_allocate(Rect2i(viewport_offset, viewport_size), 0, 0, render_pass, vkframebuffer, &draw_list);
 	draw_list->subpass_count = subpass_count;
@@ -7069,6 +7077,7 @@ RenderingDeviceVulkan::DrawList *RenderingDeviceVulkan::_get_draw_list_ptr(DrawL
 		// this is a split command list
 		// we are on the drawing thread
 		// allocate the command buffer now
+		draw_list->owner_thread = Thread::get_caller_id();
 		draw_list->command_buffer = _allocate_command_buffer_for_secondary();
 		// start the secondary command buffer
 
@@ -7476,39 +7485,18 @@ void RenderingDeviceVulkan::draw_list_disable_scissor(DrawListID p_list) {
 	vkCmdSetScissor(draw_list->command_buffer, 0, 1, &scissor);
 }
 
-uint32_t RenderingDeviceVulkan::draw_list_get_current_pass() {
+uint32_t RenderingDeviceVulkan::draw_list_get_current_pass(DrawListID p_list) {
 	return draw_list_current_subpass;
 }
 
-RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_switch_to_next_pass() {
+RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_switch_to_next_pass(DrawListID p_draw_list) {
 	DrawListID id;
-	draw_list_switch_to_next_pass_split(0, &id);
-
-	/*	DrawList* draw_list=_get_current_draw_list();
-		ERR_FAIL_COND_V(draw_list == nullptr, INVALID_ID);
-		ERR_FAIL_COND_V(draw_list->state.current_subpass >= draw_list->subpass_count - 1, INVALID_FORMAT_ID);
-
-		VkCommandBuffer command_buffer=draw_list->command_buffer;
-		Rect2i viewport;
-		VkRenderPass render_pass=draw_list->render_pass;
-		VkFramebuffer framebuffer=draw_list->framebuffer;
-		uint32_t subpass=draw_list->state.current_subpass;
-
-		_draw_list_push_split_commands(draw_list,&viewport);
-		subpass+=1;
-
-		vkCmdNextSubpass(command_buffer, VK_SUBPASS_CONTENTS_INLINE);
-
-		draw_list->command_buffer=NULL; // don't enqueue this yet
-		_draw_list_free(draw_list);
-
-		_draw_list_allocate(viewport, 0, subpass,render_pass,framebuffer,&draw_list,command_buffer);
-		_set_current_draw_list(draw_list);*/
+	draw_list_switch_to_next_pass_split(p_draw_list,0, &id);
 
 	return id;
 }
-Error RenderingDeviceVulkan::draw_list_switch_to_next_pass_split(uint32_t p_splits, DrawListID *r_split_ids) {
-	DrawList *draw_list = _get_current_draw_list();
+Error RenderingDeviceVulkan::draw_list_switch_to_next_pass_split(DrawListID p_draw_list,uint32_t p_splits, DrawListID *r_split_ids) {
+	DrawList *draw_list = _get_draw_list_ptr(p_draw_list);
 	ERR_FAIL_COND_V(draw_list == nullptr, ERR_INVALID_PARAMETER);
 	ERR_FAIL_COND_V(draw_list->state.current_subpass >= draw_list->subpass_count - 1, ERR_INVALID_PARAMETER);
 
@@ -7526,8 +7514,12 @@ Error RenderingDeviceVulkan::draw_list_switch_to_next_pass_split(uint32_t p_spli
 		new_draw_list->framebuffer = draw_list->framebuffer;
 		new_draw_list->render_pass = draw_list->render_pass;
 		new_draw_list->split_count = 0;
+		new_draw_list->owner_thread = Thread::get_caller_id();
 		new_draw_list->state.current_subpass = draw_list->state.current_subpass + 1;
+		new_draw_list->id = draw_list->id;
 		r_split_ids[0] = new_draw_list->id;
+		draw_lists[new_draw_list->id] = new_draw_list;
+		printf("pass: %d %d %d %d\n", viewport.position.x, viewport.position.y,viewport.size.x,viewport.size.y);
 	} else {
 		// allocate split draw lists for writing on multiple threads
 		// can't create and begin command buffer until a draw function is called on a thread
@@ -7542,19 +7534,23 @@ Error RenderingDeviceVulkan::draw_list_switch_to_next_pass_split(uint32_t p_spli
 			new_draw_list[i + 1].render_pass = draw_list->render_pass;
 			new_draw_list[i + 1].split_count = 0;
 			new_draw_list[i + 1].split_owner = new_draw_list;
+			new_draw_list[i+1].id = draw_list_next_id.fetch_add(1);
+			draw_lists[new_draw_list[i+1].id] = new_draw_list;
 		}
 		new_draw_list[0].command_buffer = draw_list->command_buffer;
-		draw_list[0].viewport = viewport;
-		draw_list[0].split_count = p_splits;
-		draw_list[0].framebuffer = draw_list->framebuffer;
-		draw_list[0].render_pass = draw_list->render_pass;
+		new_draw_list[0].viewport = viewport;
+		new_draw_list[0].split_count = p_splits;
+		new_draw_list[0].framebuffer = draw_list->framebuffer;
+		new_draw_list[0].render_pass = draw_list->render_pass;
+		new_draw_list[0].id = draw_list->id;
+		new_draw_list[0].owner_thread = Thread::get_caller_id();
+		draw_lists[new_draw_list[0].id] = new_draw_list;
 		for (uint32_t i = 0; i < p_splits; i++) {
 			r_split_ids[i] = new_draw_list[i + 1].id;
 		}
 	}
 
 	_draw_list_free(draw_list);
-	_set_current_draw_list(new_draw_list);
 
 	return OK;
 }
@@ -7644,23 +7640,7 @@ VkCommandBuffer RenderingDeviceVulkan::_allocate_command_buffer_for_compute() {
 	return retval;
 }
 
-RenderingDeviceVulkan::DrawList *RenderingDeviceVulkan::_get_current_draw_list() {
-	Thread::ID us = Thread::get_caller_id();
-	HashMap<Thread::ID, ThreadCommandPool>::Iterator E = thread_command_pools.find(us);
-	if (E) {
-		return E->value.current_draw_list;
-	} else {
-		return NULL;
-	}
-}
 
-void RenderingDeviceVulkan::_set_current_draw_list(DrawList *draw_list) {
-	Thread::ID us = Thread::get_caller_id();
-	HashMap<Thread::ID, ThreadCommandPool>::Iterator E = thread_command_pools.find(us);
-	if (E) {
-		E->value.current_draw_list = draw_list;
-	}
-}
 
 Error RenderingDeviceVulkan::_draw_list_allocate(const Rect2i &p_viewport, uint32_t p_splits, uint32_t p_subpass, VkRenderPass render_pass, VkFramebuffer framebuffer, DrawList **p_draw_list) {
 	// allocate a single draw list - we can create the command buffer now
@@ -7672,11 +7652,8 @@ Error RenderingDeviceVulkan::_draw_list_allocate(const Rect2i &p_viewport, uint3
 		draw_list->framebuffer = framebuffer;
 		draw_list->render_pass = render_pass;
 		draw_list->split_count = 0;
-
-		_THREAD_SAFE_LOCK_
-		draw_list->id = draw_list_next_id;
-		draw_list_next_id++;
-		_THREAD_SAFE_UNLOCK_
+		draw_list->owner_thread = Thread::get_caller_id();
+		draw_list->id = draw_list_next_id.fetch_add(1);
 
 		VkCommandBufferBeginInfo cmdbuf_begin;
 		cmdbuf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -7691,12 +7668,8 @@ Error RenderingDeviceVulkan::_draw_list_allocate(const Rect2i &p_viewport, uint3
 		// can't create and begin command buffer until a draw function is called on a thread
 		// so we know which pool it needs to use (as pools are linked to threads)
 
-		_THREAD_SAFE_LOCK_
+		DrawListID start_id = draw_list_next_id.fetch_add(p_splits+1);
 
-		DrawListID start_id = draw_list_next_id;
-		draw_list_next_id += p_splits + 1;
-
-		_THREAD_SAFE_UNLOCK_
 
 		draw_list = memnew_arr(DrawList, p_splits + 1);
 		for (uint32_t i = 0; i < p_splits; i++) {
@@ -7715,6 +7688,7 @@ Error RenderingDeviceVulkan::_draw_list_allocate(const Rect2i &p_viewport, uint3
 		draw_list[0].framebuffer = framebuffer;
 		draw_list[0].render_pass = render_pass;
 		draw_list[0].id = start_id;
+		draw_list[0].owner_thread = Thread::get_caller_id();
 
 		VkCommandBufferBeginInfo cmdbuf_begin;
 		cmdbuf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -7725,7 +7699,7 @@ Error RenderingDeviceVulkan::_draw_list_allocate(const Rect2i &p_viewport, uint3
 		VkResult err = vkBeginCommandBuffer(draw_list->command_buffer, &cmdbuf_begin);
 		ERR_FAIL_COND_V_MSG(err, FAILED, "vkBeginCommandBuffer failed with error " + itos(err) + ".");
 	}
-
+	draw_lists[draw_list->id]=draw_list;
 	*p_draw_list = draw_list;
 	return OK;
 }
@@ -7760,10 +7734,10 @@ void RenderingDeviceVulkan::_draw_list_free(DrawList *draw_list) {
 	}
 }
 
-void RenderingDeviceVulkan::draw_list_end(BitField<BarrierMask> p_post_barrier) {
+void RenderingDeviceVulkan::draw_list_end(DrawListID p_list,BitField<BarrierMask> p_post_barrier) {
 	_THREAD_SAFE_METHOD_
 
-	DrawList *draw_list = _get_current_draw_list();
+	DrawList *draw_list = _get_draw_list_ptr(p_list);
 
 	ERR_FAIL_COND_MSG(!draw_list, "No draw list on current thread");
 
@@ -7859,6 +7833,8 @@ void RenderingDeviceVulkan::draw_list_end(BitField<BarrierMask> p_post_barrier) 
 #ifdef FORCE_FULL_BARRIER
 	_full_barrier(true);
 #endif
+	vkEndCommandBuffer(draw_list->command_buffer);
+	context->append_command_buffer(draw_list->command_buffer);
 }
 
 /***********************/
@@ -8645,10 +8621,10 @@ String RenderingDeviceVulkan::get_device_pipeline_cache_uuid() const {
 }
 
 void RenderingDeviceVulkan::_finalize_command_bufers() {
-	DrawList *draw_list = _get_current_draw_list();
+	/* DrawList *draw_list = _get_current_draw_list();
 	if (draw_list) {
 		ERR_PRINT("Found open draw list at the end of the frame, this should never happen (further drawing will likely not work).");
-	}
+	}*/
 
 	if (compute_list) {
 		ERR_PRINT("Found open compute list at the end of the frame, this should never happen (further compute will likely not work).");
@@ -8663,6 +8639,13 @@ void RenderingDeviceVulkan::_finalize_command_bufers() {
 void RenderingDeviceVulkan::_begin_frame() {
 	// Erase pending resources.
 	_free_pending_resources(frame);
+
+	// reset all the command pools for this frame
+	for (HashMap<Thread::ID, ThreadCommandPool>::Iterator it = thread_command_pools.begin(); it != thread_command_pools.end(); ++it) {
+		vkResetCommandPool(context->get_device(),it->value.frame_pools[frame],VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT);
+	}
+
+
 
 	// Create setup command buffer and set as the setup buffer.
 
@@ -9665,6 +9648,12 @@ bool RenderingDeviceVulkan::has_feature(const Features p_feature) const {
 			return false;
 		}
 	}
+}
+
+RenderingDevice::DrawListID RenderingDeviceVulkan::draw_list_get_parent(RenderingDevice::DrawListID p_split_child_draw_list) {
+	DrawList *draw_list = _get_draw_list_ptr(p_split_child_draw_list);
+	ERR_FAIL_COND_V(!draw_list,0);
+	return draw_list->split_owner->id;
 }
 
 RenderingDeviceVulkan::RenderingDeviceVulkan() {

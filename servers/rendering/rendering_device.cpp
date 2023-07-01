@@ -360,11 +360,11 @@ Vector<int64_t> RenderingDevice::_draw_list_begin_split(RID p_framebuffer, uint3
 	return split_ids;
 }
 
-Vector<int64_t> RenderingDevice::_draw_list_switch_to_next_pass_split(uint32_t p_splits) {
+Vector<int64_t> RenderingDevice::_draw_list_switch_to_next_pass_split(DrawListID draw_list,uint32_t p_splits) {
 	Vector<DrawListID> splits;
 	splits.resize(p_splits);
 
-	Error err = draw_list_switch_to_next_pass_split(p_splits, splits.ptrw());
+	Error err = draw_list_switch_to_next_pass_split(draw_list,p_splits, splits.ptrw());
 	ERR_FAIL_COND_V(err != OK, Vector<int64_t>());
 
 	Vector<int64_t> split_ids;
@@ -786,10 +786,10 @@ void RenderingDevice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("draw_list_enable_scissor", "draw_list", "rect"), &RenderingDevice::draw_list_enable_scissor, DEFVAL(Rect2()));
 	ClassDB::bind_method(D_METHOD("draw_list_disable_scissor", "draw_list"), &RenderingDevice::draw_list_disable_scissor);
 
-	ClassDB::bind_method(D_METHOD("draw_list_switch_to_next_pass"), &RenderingDevice::draw_list_switch_to_next_pass);
-	ClassDB::bind_method(D_METHOD("draw_list_switch_to_next_pass_split", "splits"), &RenderingDevice::_draw_list_switch_to_next_pass_split);
+	ClassDB::bind_method(D_METHOD("draw_list_switch_to_next_pass", "draw_list"), &RenderingDevice::draw_list_switch_to_next_pass);
+	ClassDB::bind_method(D_METHOD("draw_list_switch_to_next_pass_split","draw_list", "splits"), &RenderingDevice::_draw_list_switch_to_next_pass_split);
 
-	ClassDB::bind_method(D_METHOD("draw_list_end", "post_barrier"), &RenderingDevice::draw_list_end, DEFVAL(BARRIER_MASK_ALL_BARRIERS));
+	ClassDB::bind_method(D_METHOD("draw_list_end", "draw_list","post_barrier"), &RenderingDevice::draw_list_end, DEFVAL(BARRIER_MASK_ALL_BARRIERS));
 
 	ClassDB::bind_method(D_METHOD("compute_list_begin", "allow_draw_overlap"), &RenderingDevice::compute_list_begin, DEFVAL(false));
 	ClassDB::bind_method(D_METHOD("compute_list_bind_compute_pipeline", "compute_list", "compute_pipeline"), &RenderingDevice::compute_list_bind_compute_pipeline);

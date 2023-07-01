@@ -1151,7 +1151,7 @@ void RendererCanvasRenderRD::_render_items(RID p_to_render_target, int p_item_co
 		prev_material = material;
 	}
 
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 }
 
 void RendererCanvasRenderRD::canvas_render_items(RID p_to_render_target, Item *p_item_list, const Color &p_modulate, Light *p_light_list, Light *p_directional_light_list, const Transform2D &p_canvas_transform, RenderingServer::CanvasItemTextureFilter p_default_filter, RenderingServer::CanvasItemTextureRepeat p_default_repeat, bool p_snap_2d_vertices_to_pixel, bool &r_sdf_used) {
@@ -1682,7 +1682,7 @@ void RendererCanvasRenderRD::light_update_shadow(RID p_rid, int p_shadow_index, 
 			instance = instance->next;
 		}
 
-		RD::get_singleton()->draw_list_end();
+		RD::get_singleton()->draw_list_end(draw_list);
 	}
 }
 
@@ -1757,7 +1757,7 @@ void RendererCanvasRenderRD::light_update_directional_shadow(RID p_rid, int p_sh
 		instance = instance->next;
 	}
 
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 
 	Transform2D to_shadow;
 	to_shadow.columns[0].x = 1.0 / -(half_size * 2.0);
@@ -1825,7 +1825,7 @@ void RendererCanvasRenderRD::render_sdf(RID p_render_target, LightOccluderInstan
 		instance = instance->next;
 	}
 
-	RD::get_singleton()->draw_list_end();
+	RD::get_singleton()->draw_list_end(draw_list);
 
 	texture_storage->render_target_sdf_process(p_render_target); //done rendering, process it
 }

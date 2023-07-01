@@ -2245,7 +2245,7 @@ void TextureStorage::update_decal_atlas() {
 					copy_effects->copy_to_atlas_fb(src_tex->rd_texture, mm.fb, t->uv_rect, draw_list, false, t->panorama_to_dp_users > 0);
 				}
 
-				RD::get_singleton()->draw_list_end();
+				RD::get_singleton()->draw_list_end(draw_list);
 
 				prev_texture = mm.texture;
 			} else {
@@ -2985,8 +2985,8 @@ void TextureStorage::render_target_do_clear_request(RID p_render_target) {
 	}
 	Vector<Color> clear_colors;
 	clear_colors.push_back(rt->clear_color);
-	RD::get_singleton()->draw_list_begin(rt->get_framebuffer(), RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_DISCARD, clear_colors);
-	RD::get_singleton()->draw_list_end();
+	RD::DrawListID draw_list=RD::get_singleton()->draw_list_begin(rt->get_framebuffer(), RD::INITIAL_ACTION_CLEAR, RD::FINAL_ACTION_READ, RD::INITIAL_ACTION_KEEP, RD::FINAL_ACTION_DISCARD, clear_colors);
+	RD::get_singleton()->draw_list_end(draw_list);
 	rt->clear_requested = false;
 }
 
